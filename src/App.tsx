@@ -40,6 +40,75 @@ export default function App() {
     setKakaoAppKey(getKakaoAppKey());
   }, []);
 
+  // Listen to Supabase session changes whenever isConfiguredSupabase is enabled
+  useEffect(() => {
+    if (!isConfiguredSupabase) return;
+
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    // Check existing session on mount/enable to handle Google OAuth redirect
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        api.getUser(session.user.id).then(async (profile) => {
+          if (profile) {
+            handleLogin(profile, true);
+          } else {
+            const defaultName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '에코멤버';
+            const defaultUser: User = {
+              id: session.user.id,
+              name: defaultName,
+              role: 'user',
+              created_at: new Date().toISOString()
+            };
+            await api.upsertUser(defaultUser);
+            handleLogin(defaultUser, true);
+          }
+        });
+      }
+    });
+
+    // Listen to active auth session changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const cachedUserStr = localStorage.getItem('ecolink_cached_user');
+        let alreadyLoggedIn = false;
+        if (cachedUserStr) {
+          try {
+            const cached = JSON.parse(cachedUserStr);
+            if (cached && cached.id === session.user.id) {
+              alreadyLoggedIn = true;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        const profile = await api.getUser(session.user.id);
+        if (profile) {
+          handleLogin(profile, alreadyLoggedIn);
+        } else {
+          const defaultName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '에코멤버';
+          const newUser: User = {
+            id: session.user.id,
+            name: defaultName,
+            role: 'user',
+            created_at: new Date().toISOString()
+          };
+          await api.upsertUser(newUser);
+          handleLogin(newUser, alreadyLoggedIn);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        localStorage.removeItem('ecolink_cached_user');
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [isConfiguredSupabase]);
+
   // Fetch items & rentals whenever user context or configuration changes
   useEffect(() => {
     loadData();
@@ -68,11 +137,13 @@ export default function App() {
     }, 4000);
   };
 
-  const handleLogin = (user: User) => {
+  const handleLogin = (user: User, silent: boolean = false) => {
     setCurrentUser(user);
     localStorage.setItem('ecolink_cached_user', JSON.stringify(user));
     setIsAuthModalOpen(false);
-    showToast(`🌱 ${user.name}님, 반갑습니다! 에코링크에 오신 것을 환영합니다.`);
+    if (!silent) {
+      showToast(`🌱 ${user.name}님, 반갑습니다! 에코링크에 오신 것을 환영합니다.`);
+    }
   };
 
   const handleContinueAsGuest = () => {
@@ -501,4 +572,3 @@ export default function App() {
     </div>
   );
 }
-
