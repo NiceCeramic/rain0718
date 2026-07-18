@@ -35,8 +35,11 @@ export default function App() {
       }
     }
 
+    // ⚡ Vercel 배포 시 환경 변수(.env)가 주입되어 있으면 기본값보다 우선해서 활성화 상태를 강제 동기화
     const config = getSupabaseConfig();
-    setIsConfiguredSupabase(config.isEnabled && !!config.url);
+    const hasEnvConfig = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    setIsConfiguredSupabase(hasEnvConfig || (config.isEnabled && !!config.url));
     setKakaoAppKey(getKakaoAppKey());
   }, []);
 
@@ -52,7 +55,7 @@ export default function App() {
       if (session?.user) {
         api.getUser(session.user.id).then(async (profile) => {
           if (profile) {
-            handleLogin(profile, false); // ⚡ 리다이렉트 시에도 UI가 정상적으로 갱신되도록 처리
+            handleLogin(profile, false);
           } else {
             const defaultName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '에코멤버';
             const defaultUser: User = {
@@ -66,7 +69,7 @@ export default function App() {
           }
         }).catch((err) => {
           console.error("Profile fetch failed:", err);
-          setIsAuthModalOpen(false); // ⚡ 에러 발생 시에도 카드가 닫히도록 안전장치
+          setIsAuthModalOpen(false);
         });
       }
     });
@@ -109,7 +112,7 @@ export default function App() {
       } else if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
         localStorage.removeItem('ecolink_cached_user');
-        setIsAuthModalOpen(true); // 로그아웃 시 다시 로그인 창 노출
+        setIsAuthModalOpen(true);
       }
     });
 
@@ -147,7 +150,6 @@ export default function App() {
   };
 
   const handleLogin = (user: User, silent: boolean = false) => {
-    // ⚡ 모달 닫기 및 유저 상태 업데이트를 최상단에서 즉시 실행하여 UI 병목 제거
     setIsAuthModalOpen(false);
     setCurrentUser(user);
     localStorage.setItem('ecolink_cached_user', JSON.stringify(user));
@@ -212,11 +214,12 @@ export default function App() {
 
   const handleConfigChange = () => {
     const config = getSupabaseConfig();
-    setIsConfiguredSupabase(config.isEnabled && !!config.url);
+    const hasEnvConfig = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+    setIsConfiguredSupabase(hasEnvConfig || (config.isEnabled && !!config.url));
     setKakaoAppKey(getKakaoAppKey());
     loadData();
     showToast(
-      config.isEnabled 
+      (hasEnvConfig || config.isEnabled)
         ? '⚡ Supabase 및 카카오맵 설정이 저장되었습니다.' 
         : '🏡 로컬 시뮬레이션 모드로 전환되었습니다.'
     );
@@ -539,7 +542,6 @@ export default function App() {
         />
       )}
 
-      {/* ⚡ 독립된 팝업 상태(isAuthModalOpen)와 필수 비인증 강제 뷰(!currentUser) 결합 제거 */}
       {(!currentUser || isAuthModalOpen) && (
         <AuthGate 
           onLogin={handleLogin} 
