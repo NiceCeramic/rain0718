@@ -139,11 +139,13 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
           </button>
         ))}
 
-        {/* Pulse badge matching Design HTML */}
-        <div className="ml-auto hidden md:flex items-center gap-1.5 text-xs font-bold text-[#0f766e] bg-teal-50/60 px-4 py-2 rounded-full border border-teal-200 animate-pulse">
-          <Icons.Eye size={12} />
-          <span>{items.filter(i => i.status === 'rented').length + 8}명이 대여 중</span>
-        </div>
+        {/* Pulse badge — shows the real count only, hidden when there's nothing to report */}
+        {items.filter(i => i.status === 'rented').length > 0 && (
+          <div className="ml-auto hidden md:flex items-center gap-1.5 text-xs font-bold text-[#0f766e] bg-teal-50/60 px-4 py-2 rounded-full border border-teal-200 animate-pulse">
+            <Icons.Eye size={12} />
+            <span>{items.filter(i => i.status === 'rented').length}명이 대여 중</span>
+          </div>
+        )}
       </div>
 
       {/* Clean Minimalism Product Feed Grid */}
