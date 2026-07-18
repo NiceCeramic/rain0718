@@ -96,6 +96,15 @@ export const getSupabaseClient = (): SupabaseClient | null => {
   return supabaseInstance;
 };
 
+// Real station/hub row shape, matches public.stations columns exactly
+export interface Station {
+  id: number;
+  created_at: string;
+  name: string;
+  latitude: number | null;
+  longitude: number | null;
+}
+
 // ---------------------------------------------------------------------------
 // NOTE ON MAPPING:
 // The DB schema (public.rentals) uses `renter_id` as the column name, while
@@ -195,6 +204,27 @@ export const api = {
     );
     saveLocalItems(updated);
     return true;
+  },
+
+  // 1b. STATIONS (real hubs/보관함, from public.stations — replaces the old hardcoded INITIAL_HUBS)
+  getStations: async (): Promise<Station[]> => {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('stations')
+          .select('*')
+          .order('name', { ascending: true });
+
+        if (error) throw error;
+        if (data) return data as Station[];
+      } catch (err) {
+        console.warn('Supabase getStations failed:', err);
+      }
+    }
+    // No local/mock fallback on purpose — an empty list is the honest answer
+    // when Supabase isn't configured or no stations have been registered yet.
+    return [];
   },
 
   // 2. RENTALS
