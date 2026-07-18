@@ -79,7 +79,7 @@ export const getSupabaseClient = (): SupabaseClient | null => {
     supabaseInstance = null;
     return null;
   }
-  
+
   if (!supabaseInstance) {
     try {
       supabaseInstance = createClient(config.url, config.anonKey, {
@@ -95,6 +95,22 @@ export const getSupabaseClient = (): SupabaseClient | null => {
   }
   return supabaseInstance;
 };
+
+// ---------------------------------------------------------------------------
+// NOTE ON MAPPING:
+// The DB schema (public.rentals) uses `renter_id` as the column name, while
+// the frontend (App.tsx / types.ts) uses `user_id`. The DB also does not have
+// `deposit` / `price_paid` columns on rentals, nor a `phone` column on
+// `public.users`. Rather than touching App.tsx or re-running SQL, we translate
+// between DB shape and frontend shape right here in the adapter layer.
+// ---------------------------------------------------------------------------
+
+const mapDbRentalToRental = (row: any): Rental => ({
+  ...row,
+  user_id: row.renter_id,
+  deposit: row.deposit ?? 0,
+  price_paid: row.price_paid ?? 0
+});
 
 // Adapter APIs
 export const api = {
@@ -112,7 +128,7 @@ export const api = {
           .from('items')
           .select('*')
           .order('created_at', { ascending: false });
-        
+
         if (error) throw error;
         if (data) {
           // Map to match frontend types if column names are direct
@@ -134,14 +150,14 @@ export const api = {
           .insert([newItem])
           .select()
           .single();
-        
+
         if (error) throw error;
         if (data) return data as Item;
       } catch (err) {
         console.warn('Supabase insertItem failed, falling back to local storage:', err);
       }
     }
-    
+
     // Local Fallback
     const localItems = getLocalItems();
     const mockId = localItems.length > 0 ? Math.max(...localItems.map(i => typeof i.id === 'number' ? i.id : 0)) + 1 : 1;
@@ -162,19 +178,19 @@ export const api = {
           .from('items')
           .update({ status })
           .eq('id', itemId);
-        
+
         if (!error) return true;
         throw error;
       } catch (err) {
         console.warn('Supabase updateItemStatus failed, falling back to local storage:', err);
       }
     }
-    
+
     // Local Fallback
     const localItems = getLocalItems();
-    const updated = localItems.map(item => 
+    const updated = localItems.map(item =>
       item.id === itemId || String(item.id) === String(itemId)
-        ? { ...item, status } 
+        ? { ...item, status }
         : item
     );
     saveLocalItems(updated);
@@ -190,25 +206,27 @@ export const api = {
           .from('rentals')
           .select('*')
           .order('rented_at', { ascending: false });
-        
+
         if (error) throw error;
         if (data) {
+          const mapped = (data as any[]).map(mapDbRentalToRental);
+
           // If we are admin, return all, otherwise filter for user_id
           const userObj = getLocalUsers().find(u => u.id === userId) || { role: 'user' };
           if (userObj.role === 'admin') {
-            return data as Rental[];
+            return mapped;
           }
-          return (data as Rental[]).filter(r => r.user_id === userId);
+          return mapped.filter(r => r.user_id === userId);
         }
       } catch (err) {
         console.warn('Supabase getRentals failed, falling back to local storage:', err);
       }
     }
-    
+
     const localRentals = getLocalRentals();
     const localUsers = getLocalUsers();
     const activeUser = localUsers.find(u => u.id === userId);
-    
+
     if (activeUser?.role === 'admin') {
       return localRentals;
     }
@@ -222,19 +240,35 @@ export const api = {
         const { data, error } = await supabase
           .from('rentals')
           .insert([{
-            ...newRental,
-            rented_at: new Date().toISOString()
+            renter_id: newRental.user_id,
+            item_id: newRental.item_id,
+            status: newRental.status,
+            deposit_status: newRental.deposit_status
+            // NOTE: `deposit` / `price_paid` are not columns on public.rentals.
+            // If you want them persisted, run in Supabase SQL editor:
+            //   alter table public.rentals add column if not exists deposit integer default 0;
+            //   alter table public.rentals add column if not exists price_paid integer default 0;
+            // then uncomment the two lines below.
+            // deposit: newRental.deposit,
+            // price_paid: newRental.price_paid,
           }])
           .select()
           .single();
-        
+
         if (error) throw error;
-        if (data) return data as Rental;
+        if (data) {
+          return {
+            ...mapDbRentalToRental(data),
+            // preserve values the DB doesn't store yet, so the UI still shows them
+            deposit: newRental.deposit,
+            price_paid: newRental.price_paid
+          };
+        }
       } catch (err) {
         console.warn('Supabase insertRental failed, falling back to local storage:', err);
       }
     }
-    
+
     // Local Fallback
     const localRentals = getLocalRentals();
     const mockId = 'rent-' + (localRentals.length + 1) + '-' + Math.floor(Math.random() * 1000);
@@ -250,8 +284,8 @@ export const api = {
   },
 
   updateRentalStatus: async (
-    rentalId: string | number, 
-    status: RentalStatus, 
+    rentalId: string | number,
+    status: RentalStatus,
     depositStatus?: DepositStatus
   ): Promise<boolean> => {
     const supabase = getSupabaseClient();
@@ -269,21 +303,21 @@ export const api = {
           .from('rentals')
           .update(updatePayload)
           .eq('id', rentalId);
-        
+
         if (!error) return true;
         throw error;
       } catch (err) {
         console.warn('Supabase updateRentalStatus failed, falling back to local storage:', err);
       }
     }
-    
+
     // Local Fallback
     const localRentals = getLocalRentals();
     const updated = localRentals.map(rental => {
       if (rental.id === rentalId || String(rental.id) === String(rentalId)) {
-        return { 
-          ...rental, 
-          status, 
+        return {
+          ...rental,
+          status,
           ...(depositStatus ? { deposit_status: depositStatus } : {}),
           ...(status === 'returned' ? { returned_at: new Date().toISOString() } : {})
         };
@@ -303,10 +337,14 @@ export const api = {
           .from('users')
           .select('*')
           .eq('id', userId)
-          .single();
-        if (!error && data) {
+          .maybeSingle(); // returns null instead of a 406 error when 0 rows exist
+
+        if (error) throw error;
+        if (data) {
           return data as User;
         }
+        // No row found for this user yet (e.g. first login after a schema reset) —
+        // fall through to local storage / let the caller create a new profile.
       } catch (err) {
         console.warn('Supabase getUser failed:', err);
       }
@@ -334,17 +372,19 @@ export const api = {
           .from('users')
           .select('*')
           .eq('id', user.id)
-          .single();
+          .maybeSingle(); // returns null instead of a 406 error when 0 rows exist
 
         if (data) {
           await supabase
             .from('users')
-            .update({ name: user.name, phone: user.phone || null, role: user.role })
+            // NOTE: public.users has no `phone` column (that lives on public.profiles).
+            // Sending it here would cause a "column not found" error, so it's omitted.
+            .update({ name: user.name, role: user.role })
             .eq('id', user.id);
         } else {
           await supabase
             .from('users')
-            .insert([{ id: user.id, name: user.name, phone: user.phone || null, role: user.role }]);
+            .insert([{ id: user.id, name: user.name, role: user.role }]);
         }
       } catch (err) {
         console.warn('Supabase upsertUser failed:', err);
