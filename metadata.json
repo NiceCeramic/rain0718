@@ -1,0 +1,6 @@
+{
+  "name": "EcoLink",
+  "description": "친환경 동네 물품 대여 서비스 - 필요한 시간만큼 빌려 쓰세요.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
