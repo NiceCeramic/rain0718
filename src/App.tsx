@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { User, Item, Rental } from './types';
-import { api, getSupabaseConfig, getKakaoAppKey, getSupabaseClient } from './supabaseClient';
-import { INITIAL_HUBS } from './data';
+import { api, getSupabaseConfig, getKakaoAppKey, getSupabaseClient, Station } from './supabaseClient';
 import { Icons } from './components/Icons';
 import { AuthGate } from './components/AuthGate';
 import { MapSection } from './components/MapSection';
@@ -16,6 +15,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [rentals, setRentals] = useState<Rental[]>([]);
+  const [stations, setStations] = useState<Station[]>([]);
   const [selectedHubId, setSelectedHubId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('browse');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -133,6 +133,9 @@ export default function App() {
       const fetchedItems = await api.getItems();
       setItems(fetchedItems);
 
+      const fetchedStations = await api.getStations();
+      setStations(fetchedStations);
+
       if (currentUser && currentUser.role !== 'guest') {
         const fetchedRentals = await api.getRentals(currentUser.id);
         setRentals(fetchedRentals);
@@ -228,8 +231,8 @@ export default function App() {
     );
   };
 
-  const hubNamesMap = INITIAL_HUBS.reduce((acc, hub) => {
-    acc[hub.id] = hub.name;
+  const hubNamesMap = stations.reduce((acc, station) => {
+    acc[String(station.id)] = station.name;
     return acc;
   }, {} as Record<string, string>);
 
