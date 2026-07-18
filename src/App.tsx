@@ -29,13 +29,15 @@ export default function App() {
     const cachedUser = localStorage.getItem('ecolink_cached_user');
     if (cachedUser) {
       try {
-        setCurrentUser(JSON.parse(cachedUser));
+        const parsed = JSON.parse(cachedUser);
+        if (parsed && parsed.id) {
+          setCurrentUser(parsed);
+        }
       } catch {
         // ignore
       }
     }
 
-    // ⚡ Vercel 환경 변수가 감지되면 로컬 저장소가 비어있어도 즉시 활성화 상태를 주입합니다.
     const config = getSupabaseConfig();
     const hasEnvConfig = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
     
@@ -55,7 +57,7 @@ export default function App() {
       if (session?.user) {
         api.getUser(session.user.id).then(async (profile) => {
           if (profile) {
-            handleLogin(profile, false);
+            handleLogin(profile, true);
           } else {
             const defaultName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '에코멤버';
             const defaultUser: User = {
@@ -82,7 +84,7 @@ export default function App() {
         if (cachedUserStr) {
           try {
             const cached = JSON.parse(cachedUserStr);
-            if (cached && cached.id === session.user.id) {
+            if (cached && cached.id === session.user.id && cached.role === 'user') {
               alreadyLoggedIn = true;
             }
           } catch {
@@ -183,6 +185,7 @@ export default function App() {
     setCurrentUser(null);
     localStorage.removeItem('ecolink_cached_user');
     setActiveTab('browse');
+    setIsAuthModalOpen(true);
     showToast('안전하게 로그아웃되었습니다.');
   };
 
@@ -232,6 +235,9 @@ export default function App() {
 
   const co2Reduced = items.filter(i => i.status === 'rented').length * 1.8 + (rentals.filter(r => r.status === 'returned').length * 2.4);
   const totalRentCount = rentals.length + 14;
+
+  // ⚡ 핵심 수정 분기: 구글 로그인이 완료되어 유저 역할이 'user'가 되면 로그인 화면 수막을 조건 없이 강제 철거합니다.
+  const shouldShowAuthGate = !currentUser || (currentUser.role !== 'user' && currentUser.role !== 'admin' && isAuthModalOpen);
 
   return (
     <div className="flex h-screen w-full bg-[#F8FAFC] text-slate-800 font-sans overflow-hidden">
@@ -319,7 +325,7 @@ export default function App() {
         </div>
 
         <div className="pt-6 border-t border-slate-100">
-          {currentUser ? (
+          {currentUser && currentUser.role !== 'guest' ? (
             <div className="p-4 bg-slate-900 rounded-2xl text-white">
               <p className="text-[10px] opacity-60 mb-1 font-semibold">에코멤버</p>
               <p className="font-bold mb-3 text-xs truncate">{currentUser.name} 님</p>
@@ -542,7 +548,8 @@ export default function App() {
         />
       )}
 
-      {(!currentUser || isAuthModalOpen) && (
+      {/* 🔐 수정된 차단벽: 정상 회원이 연동되면 무조건 문을 열어줍니다. */}
+      {shouldShowAuthGate && (
         <AuthGate 
           onLogin={handleLogin} 
           onContinueAsGuest={handleContinueAsGuest} 
