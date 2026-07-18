@@ -35,7 +35,7 @@ export default function App() {
       }
     }
 
-    // ⚡ Vercel 배포 시 환경 변수(.env)가 주입되어 있으면 기본값보다 우선해서 활성화 상태를 강제 동기화
+    // ⚡ Vercel 환경 변수가 감지되면 로컬 저장소가 비어있어도 즉시 활성화 상태를 주입합니다.
     const config = getSupabaseConfig();
     const hasEnvConfig = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
     
