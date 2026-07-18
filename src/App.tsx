@@ -52,7 +52,7 @@ export default function App() {
       if (session?.user) {
         api.getUser(session.user.id).then(async (profile) => {
           if (profile) {
-            handleLogin(profile, true);
+            handleLogin(profile, false); // ⚡ 리다이렉트 시에도 UI가 정상적으로 갱신되도록 처리
           } else {
             const defaultName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '에코멤버';
             const defaultUser: User = {
@@ -62,15 +62,18 @@ export default function App() {
               created_at: new Date().toISOString()
             };
             await api.upsertUser(defaultUser);
-            handleLogin(defaultUser, true);
+            handleLogin(defaultUser, false);
           }
+        }).catch((err) => {
+          console.error("Profile fetch failed:", err);
+          setIsAuthModalOpen(false); // ⚡ 에러 발생 시에도 카드가 닫히도록 안전장치
         });
       }
     });
 
     // Listen to active auth session changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
+      if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
         const cachedUserStr = localStorage.getItem('ecolink_cached_user');
         let alreadyLoggedIn = false;
         if (cachedUserStr) {
@@ -84,23 +87,29 @@ export default function App() {
           }
         }
 
-        const profile = await api.getUser(session.user.id);
-        if (profile) {
-          handleLogin(profile, alreadyLoggedIn);
-        } else {
-          const defaultName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '에코멤버';
-          const newUser: User = {
-            id: session.user.id,
-            name: defaultName,
-            role: 'user',
-            created_at: new Date().toISOString()
-          };
-          await api.upsertUser(newUser);
-          handleLogin(newUser, alreadyLoggedIn);
+        try {
+          const profile = await api.getUser(session.user.id);
+          if (profile) {
+            handleLogin(profile, alreadyLoggedIn);
+          } else {
+            const defaultName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '에코멤버';
+            const newUser: User = {
+              id: session.user.id,
+              name: defaultName,
+              role: 'user',
+              created_at: new Date().toISOString()
+            };
+            await api.upsertUser(newUser);
+            handleLogin(newUser, alreadyLoggedIn);
+          }
+        } catch (err) {
+          console.error("Auth change handling failed:", err);
+          setIsAuthModalOpen(false);
         }
       } else if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
         localStorage.removeItem('ecolink_cached_user');
+        setIsAuthModalOpen(true); // 로그아웃 시 다시 로그인 창 노출
       }
     });
 
@@ -138,9 +147,11 @@ export default function App() {
   };
 
   const handleLogin = (user: User, silent: boolean = false) => {
+    // ⚡ 모달 닫기 및 유저 상태 업데이트를 최상단에서 즉시 실행하여 UI 병목 제거
+    setIsAuthModalOpen(false);
     setCurrentUser(user);
     localStorage.setItem('ecolink_cached_user', JSON.stringify(user));
-    setIsAuthModalOpen(false);
+    
     if (!silent) {
       showToast(`🌱 ${user.name}님, 반갑습니다! 에코링크에 오신 것을 환영합니다.`);
     }
@@ -153,8 +164,8 @@ export default function App() {
       role: 'guest',
       created_at: new Date().toISOString()
     };
-    setCurrentUser(guestUser);
     setIsAuthModalOpen(false);
+    setCurrentUser(guestUser);
     showToast('👁 게스트 모드로 둘러봅니다. 대여나 등록 시 로그인이 안내됩니다.', 'info');
   };
 
@@ -180,7 +191,6 @@ export default function App() {
     }
 
     try {
-      // Build a rental object
       const newRental: Omit<Rental, 'id' | 'rented_at'> = {
         user_id: currentUser.id,
         item_id: item.id,
@@ -191,7 +201,6 @@ export default function App() {
       };
 
       await api.insertRental(newRental);
-      // Change active tab to transactions to let user proceed with transfer
       setActiveTab('transactions');
       loadData();
       showToast('🚀 대여가 정상 신청되었습니다. 이체 정보 확인 단계를 진행해주세요.');
@@ -213,15 +222,13 @@ export default function App() {
     );
   };
 
-  // Helper map to quickly find Hub Name by ID
   const hubNamesMap = INITIAL_HUBS.reduce((acc, hub) => {
     acc[hub.id] = hub.name;
     return acc;
   }, {} as Record<string, string>);
 
-  // Calculate quick neighborhood eco stats
   const co2Reduced = items.filter(i => i.status === 'rented').length * 1.8 + (rentals.filter(r => r.status === 'returned').length * 2.4);
-  const totalRentCount = rentals.length + 14; // Add realistic constant for aesthetic
+  const totalRentCount = rentals.length + 14;
 
   return (
     <div className="flex h-screen w-full bg-[#F8FAFC] text-slate-800 font-sans overflow-hidden">
@@ -229,7 +236,6 @@ export default function App() {
       {/* 1. Left Fixed Sidebar Layout (Desktop) */}
       <aside className="hidden lg:flex w-64 bg-white border-r border-slate-200 flex-col p-6 h-full justify-between shrink-0">
         <div className="space-y-8">
-          {/* Logo & Slogan */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-[#0f766e] rounded-xl flex items-center justify-center shadow-lg shadow-teal-900/20">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -245,14 +251,11 @@ export default function App() {
             </div>
           </div>
 
-          {/* Nav Links */}
           <nav className="space-y-1.5">
             <button
               onClick={() => setActiveTab('browse')}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'browse'
-                  ? 'bg-teal-50 text-[#0f766e]'
-                  : 'text-slate-500 hover:bg-slate-50'
+                activeTab === 'browse' ? 'bg-teal-50 text-[#0f766e]' : 'text-slate-500 hover:bg-slate-50'
               }`}
             >
               <span className="flex items-center gap-3">
@@ -275,9 +278,7 @@ export default function App() {
                 }
               }}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'consignment'
-                  ? 'bg-teal-50 text-[#0f766e]'
-                  : 'text-slate-500 hover:bg-slate-50'
+                activeTab === 'consignment' ? 'bg-teal-50 text-[#0f766e]' : 'text-slate-500 hover:bg-slate-50'
               }`}
             >
               <span className="flex items-center gap-3">
@@ -298,9 +299,7 @@ export default function App() {
                 }
               }}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'transactions'
-                  ? 'bg-teal-50 text-[#0f766e]'
-                  : 'text-slate-500 hover:bg-slate-50'
+                activeTab === 'transactions' ? 'bg-teal-50 text-[#0f766e]' : 'text-slate-500 hover:bg-slate-50'
               }`}
             >
               <span className="flex items-center gap-3">
@@ -316,7 +315,6 @@ export default function App() {
           </nav>
         </div>
 
-        {/* User Stats / Profile Info at the bottom of sidebar */}
         <div className="pt-6 border-t border-slate-100">
           {currentUser ? (
             <div className="p-4 bg-slate-900 rounded-2xl text-white">
@@ -346,10 +344,7 @@ export default function App() {
 
       {/* 2. Main Work Stream Content Panel */}
       <main className="flex-1 flex flex-col h-full overflow-hidden pb-16 lg:pb-0">
-        
-        {/* Main Sticky Header */}
         <header className="h-16 bg-white border-b border-slate-200 px-6 md:px-8 flex items-center justify-between shrink-0">
-          {/* Mobile Menu Logo */}
           <div className="flex items-center gap-2 lg:hidden">
             <div className="w-8 h-8 bg-[#0f766e] rounded-lg flex items-center justify-center">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -359,14 +354,11 @@ export default function App() {
             <span className="text-sm font-black text-slate-900">에코링크</span>
           </div>
 
-          {/* Desktop Search input placeholder or visual title */}
           <div className="hidden md:flex items-center gap-2">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">햇살동 생활 밀착형 자원 연대</span>
           </div>
 
-          {/* Right Header Status Bar & Triggers */}
           <div className="flex items-center gap-3">
-            {/* Database mode badge */}
             <button
               onClick={() => setIsSettingsOpen(true)}
               className={`px-3 py-1 rounded-full text-[10px] font-bold border transition flex items-center gap-1.5 cursor-pointer ${
@@ -380,7 +372,6 @@ export default function App() {
               <span className="sm:hidden">설정</span>
             </button>
 
-            {/* Profile Avatar / Quick logout */}
             {currentUser && (
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs" title={`${currentUser.name} 님`}>
@@ -401,22 +392,15 @@ export default function App() {
         {/* Scrollable Contents Section Frame */}
         <section className="p-6 md:p-8 flex flex-col gap-6 flex-1 overflow-y-auto">
           
-          {/* Welcome Screen when NOT logged in */}
-          {!currentUser && (
-            <AuthGate onLogin={handleLogin} onContinueAsGuest={handleContinueAsGuest} />
-          )}
-
           {/* Active Tab Router */}
           {activeTab === 'browse' && (
             <div className="space-y-6">
-              {/* High Resolution Interactive Map Section */}
               <MapSection 
                 selectedHubId={selectedHubId} 
                 onSelectHub={setSelectedHubId} 
                 kakaoAppKey={kakaoAppKey}
               />
 
-              {/* Main Product/Feeds */}
               <BrowseFeed 
                 items={items} 
                 currentUser={currentUser} 
@@ -449,7 +433,6 @@ export default function App() {
             />
           )}
 
-          {/* Neighborhood synergy card inside content instead of heavy sidebar block */}
           {activeTab === 'browse' && (
             <div className="bg-slate-900 text-white rounded-3xl p-6 relative overflow-hidden mt-2">
               <div className="absolute top-1/2 left-1/3 w-3 h-3 bg-teal-500 rounded-full shadow-[0_0_10px_rgba(20,184,166,0.5)]"></div>
@@ -476,7 +459,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Styled Minimalism Footer inside scroll area */}
           <footer className="py-8 text-center text-xs text-slate-400 border-t border-slate-200/50 mt-12 shrink-0">
             <p className="font-semibold text-slate-500">🌿 에코링크 (EcoLink) 친환경 동네 연대</p>
             <p className="mt-1 leading-relaxed max-w-md mx-auto text-[11px]">
@@ -542,11 +524,7 @@ export default function App() {
       {/* Floating toast notification */}
       {toast && (
         <div className="fixed top-20 right-4 z-50 animate-fadeIn">
-          <div className={`px-5 py-3.5 rounded-2xl shadow-xl text-xs font-semibold flex items-center gap-2 border ${
-            toast.type === 'success' 
-              ? 'bg-slate-900 border-slate-800 text-white' 
-              : 'bg-slate-900 border-slate-800 text-white'
-          }`}>
+          <div className="px-5 py-3.5 rounded-2xl shadow-xl text-xs font-semibold flex items-center gap-2 border bg-slate-900 border-slate-800 text-white">
             <Icons.Check size={14} className="text-teal-400" />
             <span>{toast.message}</span>
           </div>
@@ -561,8 +539,8 @@ export default function App() {
         />
       )}
 
-      {/* Auth warning trigger modal if non-logged action is clicked */}
-      {isAuthModalOpen && (
+      {/* ⚡ 독립된 팝업 상태(isAuthModalOpen)와 필수 비인증 강제 뷰(!currentUser) 결합 제거 */}
+      {(!currentUser || isAuthModalOpen) && (
         <AuthGate 
           onLogin={handleLogin} 
           onContinueAsGuest={handleContinueAsGuest} 
