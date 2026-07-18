@@ -233,8 +233,10 @@ export default function App() {
     return acc;
   }, {} as Record<string, string>);
 
+  // 실제 집계 데이터만 사용 (가짜 padding 숫자 제거)
   const co2Reduced = items.filter(i => i.status === 'rented').length * 1.8 + (rentals.filter(r => r.status === 'returned').length * 2.4);
-  const totalRentCount = rentals.length + 14;
+  const totalRentCount = rentals.length;
+  const activeRenterCount = rentals.filter(r => r.status === 'active').length;
 
   // ⚡ 핵심 수정 분기: 구글 로그인이 완료되어 유저 역할이 'user'가 되면 로그인 화면 수막을 조건 없이 강제 철거합니다.
   const shouldShowAuthGate = !currentUser || (currentUser.role !== 'user' && currentUser.role !== 'admin' && isAuthModalOpen);
@@ -364,7 +366,7 @@ export default function App() {
           </div>
 
           <div className="hidden md:flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">햇살동 생활 밀착형 자원 연대</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">내 주변 생활 밀착형 자원 연대</span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -447,7 +449,7 @@ export default function App() {
               <div className="absolute top-1/2 left-1/3 w-3 h-3 bg-teal-500 rounded-full shadow-[0_0_10px_rgba(20,184,166,0.5)]"></div>
               <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h3 className="text-sm font-bold text-teal-400 tracking-wider uppercase mb-1">햇살동 에코 시너지 리포트</h3>
+                  <h3 className="text-sm font-bold text-teal-400 tracking-wider uppercase mb-1">에코 시너지 리포트</h3>
                   <p className="text-xs text-slate-300">공유 자원을 함께 쓰는 동네 연대 행동이 지구를 살립니다.</p>
                 </div>
                 <div className="flex gap-6 items-center">
@@ -471,7 +473,7 @@ export default function App() {
           <footer className="py-8 text-center text-xs text-slate-400 border-t border-slate-200/50 mt-12 shrink-0">
             <p className="font-semibold text-slate-500">🌿 에코링크 (EcoLink) 친환경 동네 연대</p>
             <p className="mt-1 leading-relaxed max-w-md mx-auto text-[11px]">
-              "필요한 시간만큼 빌려 쓰는 합리적인 소비 생활, 햇살동에서 시작됩니다."
+              "필요한 시간만큼 빌려 쓰는 합리적인 소비 생활, 내 동네에서 시작됩니다."
             </p>
             <p className="mt-3 font-mono text-[9px]">
               © {new Date().getFullYear()} EcoLink. Built with React & Supabase.
