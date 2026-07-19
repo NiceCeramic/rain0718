@@ -10,6 +10,7 @@ interface BrowseFeedProps {
   onRent: (item: Item) => void;
   onShowAuthModal: () => void;
   hubNamesMap: Record<string, string>; // Maps hub ID to hub Name
+  rentalCounts: Record<string, number>; // item id -> currently active rental count
 }
 
 type FilterType = 'all' | '우산' | '양산' | '보조배터리' | 'available';
@@ -20,8 +21,16 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
   selectedHubId,
   onRent,
   onShowAuthModal,
-  hubNamesMap
+  hubNamesMap,
+  rentalCounts
 }) => {
+  // Remaining stock = quantity registered by the owner - currently active rentals.
+  // Defaults to 1 total / 0 rented if an item predates the quantity column.
+  const getRemainingStock = (item: Item): number => {
+    const total = (item as any).quantity ?? 1;
+    const rented = rentalCounts[String(item.id)] || 0;
+    return Math.max(0, total - rented);
+  };
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
@@ -40,7 +49,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     if (filter === '우산' || filter === '양산' || filter === '보조배터리') {
       if (item.category !== filter) return false;
     } else if (filter === 'available') {
-      if (item.status !== 'available') return false;
+      if (item.status !== 'available' || getRemainingStock(item) <= 0) return false;
     }
 
     // 3. Search query filter
@@ -157,8 +166,10 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
           </div>
         ) : (
           filteredItems.map((item) => {
-            const isAvailable = item.status === 'available';
-            const isRented = item.status === 'rented';
+            const remainingStock = getRemainingStock(item);
+            const isSoldOut = remainingStock <= 0;
+            const isAvailable = item.status === 'available' && !isSoldOut;
+            const isRented = item.status === 'rented' || isSoldOut;
 
             return (
               <div
@@ -171,7 +182,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                 {/* Rented Out or Maintenance Overlays */}
                 {!isAvailable && (
                   <div className="absolute top-4 right-4 z-10 bg-slate-900 text-white text-[10px] px-2.5 py-1 rounded font-bold uppercase tracking-widest">
-                    {isRented ? 'Rented Out' : 'Checking'}
+                    {isSoldOut ? '품절' : isRented ? 'Rented Out' : 'Checking'}
                   </div>
                 )}
 
@@ -194,8 +205,8 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                     {item.title}
                   </h3>
                   {isAvailable && (
-                    <span className="text-[10px] font-bold text-[#0f766e] bg-teal-50 px-2 py-0.5 rounded-md shrink-0">
-                      대여가능
+                    <span className="text-[10px] font-bold text-[#0f766e] bg-teal-50 px-2 py-0.5 rounded-md shrink-0 whitespace-nowrap">
+                      대여가능 · 남은 수량 {remainingStock}개
                     </span>
                   )}
                 </div>
@@ -304,14 +315,22 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   ⚠️ 보증금은 미납 및 고의 유실, 파손을 예방하기 위한 조치이며 반납 즉시 자동 환급됩니다.
                 </div>
 
+                {/* Remaining Stock Line */}
+                <div className="flex justify-between items-center text-[11px] text-slate-600 -mt-2">
+                  <span>남은 수량</span>
+                  <span className={`font-bold ${getRemainingStock(selectedItem) > 0 ? 'text-teal-700' : 'text-rose-600'}`}>
+                    {getRemainingStock(selectedItem)}개 / 총 {(selectedItem as any).quantity ?? 1}개
+                  </span>
+                </div>
+
                 {/* Footer Actions */}
                 <div className="pt-2">
-                  {selectedItem.status !== 'available' ? (
+                  {selectedItem.status !== 'available' || getRemainingStock(selectedItem) <= 0 ? (
                     <button
                       disabled
                       className="w-full py-3 bg-slate-100 text-slate-400 font-bold rounded-2xl text-xs cursor-not-allowed"
                     >
-                      지금은 대여 중인 물건입니다
+                      😢 모두 대여 중인 물건입니다 (품절)
                     </button>
                   ) : currentUser?.role === 'guest' ? (
                     <button
