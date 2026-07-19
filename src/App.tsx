@@ -16,6 +16,7 @@ export default function App() {
   const [items, setItems] = useState<Item[]>([]);
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [stations, setStations] = useState<Station[]>([]);
+  const [rentalCounts, setRentalCounts] = useState<Record<string, number>>({});
   const [selectedHubId, setSelectedHubId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('browse');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -136,6 +137,9 @@ export default function App() {
       const fetchedStations = await api.getStations();
       setStations(fetchedStations);
 
+      const fetchedRentalCounts = await api.getActiveRentalCounts();
+      setRentalCounts(fetchedRentalCounts);
+
       if (currentUser && currentUser.role !== 'guest') {
         const fetchedRentals = await api.getRentals(currentUser.id);
         setRentals(fetchedRentals);
@@ -198,6 +202,16 @@ export default function App() {
       return;
     }
 
+    // Quick client-side check for instant feedback (the DB trigger is the real safety net
+    // that prevents overbooking even if two people click at the same time)
+    const totalQuantity = (item as any).quantity ?? 1;
+    const currentlyRented = rentalCounts[String(item.id)] || 0;
+    if (currentlyRented >= totalQuantity) {
+      showToast('😢 죄송해요, 방금 재고가 모두 소진되었습니다.', 'info');
+      loadData();
+      return;
+    }
+
     try {
       const newRental: Omit<Rental, 'id' | 'rented_at'> = {
         user_id: currentUser.id,
@@ -212,9 +226,17 @@ export default function App() {
       setActiveTab('transactions');
       loadData();
       showToast('🚀 대여가 정상 신청되었습니다. 이체 정보 확인 단계를 진행해주세요.');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to rent item', err);
-      showToast('대여 신청 중 오류가 발생했습니다.', 'info');
+      const dbMessage: string | undefined = err?.message;
+      const isSoldOut = dbMessage?.includes('모두 대여 중');
+      showToast(
+        isSoldOut
+          ? '😢 죄송해요, 방금 재고가 모두 소진되었습니다.'
+          : '대여 신청 중 오류가 발생했습니다.',
+        'info'
+      );
+      loadData();
     }
   };
 
@@ -422,6 +444,7 @@ export default function App() {
                 onRent={handleRentItem} 
                 onShowAuthModal={() => setIsAuthModalOpen(true)}
                 hubNamesMap={hubNamesMap}
+                rentalCounts={rentalCounts}
               />
             </div>
           )}
