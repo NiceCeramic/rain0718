@@ -159,6 +159,32 @@ export const api = {
     return getLocalItems();
   },
 
+  // Counts currently-active (not yet returned/canceled) rentals per item, across all users.
+  // Used to compute "재고 - 대여중 = 남은 수량" for the browse feed.
+  getActiveRentalCounts: async (): Promise<Record<string, number>> => {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('rentals')
+          .select('item_id')
+          .in('status', ['pending_deposit', 'active']);
+
+        if (error) throw error;
+        if (data) {
+          return (data as { item_id: string | number }[]).reduce((acc, row) => {
+            const key = String(row.item_id);
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>);
+        }
+      } catch (err) {
+        console.warn('Supabase getActiveRentalCounts failed:', err);
+      }
+    }
+    return {};
+  },
+
   insertItem: async (newItem: Omit<Item, 'id' | 'created_at'>): Promise<Item> => {
     const supabase = getSupabaseClient();
     if (supabase) {
@@ -305,40 +331,42 @@ export const api = {
   insertRental: async (newRental: Omit<Rental, 'id' | 'rented_at'>): Promise<Rental> => {
     const supabase = getSupabaseClient();
     if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('rentals')
-          .insert([{
-            renter_id: newRental.user_id,
-            item_id: newRental.item_id,
-            status: newRental.status,
-            deposit_status: newRental.deposit_status
-            // NOTE: `deposit` / `price_paid` are not columns on public.rentals.
-            // If you want them persisted, run in Supabase SQL editor:
-            //   alter table public.rentals add column if not exists deposit integer default 0;
-            //   alter table public.rentals add column if not exists price_paid integer default 0;
-            // then uncomment the two lines below.
-            // deposit: newRental.deposit,
-            // price_paid: newRental.price_paid,
-          }])
-          .select()
-          .single();
+      const { data, error } = await supabase
+        .from('rentals')
+        .insert([{
+          renter_id: newRental.user_id,
+          item_id: newRental.item_id,
+          status: newRental.status,
+          deposit_status: newRental.deposit_status
+          // NOTE: `deposit` / `price_paid` are not columns on public.rentals.
+          // If you want them persisted, run in Supabase SQL editor:
+          //   alter table public.rentals add column if not exists deposit integer default 0;
+          //   alter table public.rentals add column if not exists price_paid integer default 0;
+          // then uncomment the two lines below.
+          // deposit: newRental.deposit,
+          // price_paid: newRental.price_paid,
+        }])
+        .select()
+        .single();
 
-        if (error) throw error;
-        if (data) {
-          return {
-            ...mapDbRentalToRental(data),
-            // preserve values the DB doesn't store yet, so the UI still shows them
-            deposit: newRental.deposit,
-            price_paid: newRental.price_paid
-          };
-        }
-      } catch (err) {
-        console.warn('Supabase insertRental failed, falling back to local storage:', err);
+      if (error) {
+        // Real rejections (e.g. the stock-exhausted trigger, RLS denial) must
+        // reach the caller as a real failure — silently falling back to
+        // localStorage here would tell the user "성공" when the item was
+        // actually sold out.
+        throw error;
+      }
+      if (data) {
+        return {
+          ...mapDbRentalToRental(data),
+          // preserve values the DB doesn't store yet, so the UI still shows them
+          deposit: newRental.deposit,
+          price_paid: newRental.price_paid
+        };
       }
     }
 
-    // Local Fallback
+    // Local Fallback — only used when Supabase isn't configured at all
     const localRentals = getLocalRentals();
     const mockId = 'rent-' + (localRentals.length + 1) + '-' + Math.floor(Math.random() * 1000);
     const rentalWithId: Rental = {
