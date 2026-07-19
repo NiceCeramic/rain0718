@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ItemCategory, User } from '../types';
 import { api, Station } from '../supabaseClient';
 import { Icons } from './Icons';
+import { StationMapPicker } from './StationMapPicker';
 
 interface ConsignmentFormProps {
   currentUser: User | null;
@@ -25,16 +26,21 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
 }) => {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<ItemCategory>('우산');
+
   const [stations, setStations] = useState<Station[]>([]);
   const [isLoadingStations, setIsLoadingStations] = useState(true);
-  const [hubName, setHubName] = useState('');
+  const [hubNameInput, setHubNameInput] = useState('');
+  const [matchedExistingStation, setMatchedExistingStation] = useState<Station | null>(null);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [pickedCoords, setPickedCoords] = useState<{ lat: number; lng: number } | null>(null);
+
   const [price, setPrice] = useState(1000);
   const [color, setColor] = useState(COLOR_PRESETS[0].hex);
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Load real consignment hubs (public.stations) instead of the old hardcoded INITIAL_HUBS
+  // Load existing consignment hubs (public.stations) so we can suggest them / detect duplicates
   useEffect(() => {
     let isMounted = true;
     (async () => {
@@ -42,15 +48,28 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       const fetchedStations = await api.getStations();
       if (!isMounted) return;
       setStations(fetchedStations);
-      if (fetchedStations.length > 0) {
-        setHubName(fetchedStations[0].name);
-      }
       setIsLoadingStations(false);
     })();
     return () => {
       isMounted = false;
     };
   }, []);
+
+  // Whenever the typed name matches an existing station exactly, reuse its saved coordinates
+  // and skip asking the user to drop a new pin.
+  useEffect(() => {
+    const trimmed = hubNameInput.trim().toLowerCase();
+    if (!trimmed) {
+      setMatchedExistingStation(null);
+      return;
+    }
+    const match = stations.find((s) => s.name.trim().toLowerCase() === trimmed) || null;
+    setMatchedExistingStation(match);
+    if (match) {
+      setIsPickerOpen(false);
+      setPickedCoords(null);
+    }
+  }, [hubNameInput, stations]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,19 +86,47 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       return;
     }
 
-    if (stations.length === 0) {
-      setMessage({ type: 'error', text: '등록된 위탁 거점이 아직 없습니다. 관리자가 거점을 먼저 등록해야 위탁이 가능합니다.' });
+    const trimmedHubName = hubNameInput.trim();
+    if (!trimmedHubName) {
+      setMessage({ type: 'error', text: '위탁 거점 이름을 입력해주세요. (예: 여의나루역 5호선 2번출구)' });
+      return;
+    }
+
+    // If it's a brand-new name (not an existing station), we require a pin on the map
+    if (!matchedExistingStation && !pickedCoords) {
+      setMessage({ type: 'error', text: '새로운 거점이에요. 지도에서 정확한 위치를 마커로 지정한 뒤 "이 위치로 확정"을 눌러주세요.' });
+      setIsPickerOpen(true);
       return;
     }
 
     setIsSubmitting(true);
 
     try {
+      let targetStation = matchedExistingStation;
+
+      if (!targetStation) {
+        const created = await api.insertStation(
+          trimmedHubName,
+          pickedCoords!.lat,
+          pickedCoords!.lng
+        );
+        if (!created) {
+          setMessage({
+            type: 'error',
+            text: '새 거점을 등록하지 못했습니다. Supabase의 stations 테이블에 로그인 유저 등록 권한(RLS 정책)이 있는지 확인해주세요.'
+          });
+          setIsSubmitting(false);
+          return;
+        }
+        targetStation = created;
+        setStations((prev) => [...prev, created]);
+      }
+
       const newItem = {
         owner_id: currentUser.id,
         title: title.trim(),
         category,
-        location: hubName,
+        location: targetStation.name,
         distance: '내 위치 기준 확인 필요',
         price: Number(price),
         color,
@@ -99,6 +146,9 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       setTitle('');
       setPrice(1000);
       setDescription('');
+      setHubNameInput('');
+      setPickedCoords(null);
+      setIsPickerOpen(false);
       
       onSuccess();
     } catch (err) {
@@ -167,27 +217,54 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
         {/* Location Hub & Price */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-slate-700 font-bold mb-1.5">위탁 거점 보관함 선택</label>
-            {isLoadingStations ? (
-              <div className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-400">
-                거점 목록을 불러오는 중...
-              </div>
-            ) : stations.length === 0 ? (
-              <div className="w-full px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 leading-relaxed">
-                ⚠️ 등록된 위탁 거점이 아직 없습니다. Supabase의 <code className="font-mono">stations</code> 테이블에 거점을 먼저 등록해주세요.
-              </div>
-            ) : (
-              <select
-                value={hubName}
-                onChange={(e) => setHubName(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-500 hover:border-slate-300 transition appearance-none cursor-pointer"
-              >
-                {stations.map((station) => (
-                  <option key={station.id} value={station.name}>
-                    {station.name}
-                  </option>
-                ))}
-              </select>
+            <label className="block text-slate-700 font-bold mb-1.5">위탁 거점 이름</label>
+            <input
+              type="text"
+              list="station-suggestions"
+              value={hubNameInput}
+              onChange={(e) => setHubNameInput(e.target.value)}
+              placeholder={isLoadingStations ? '거점 목록을 불러오는 중...' : '예: 여의나루역 5호선 2번출구'}
+              className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-500 hover:border-slate-300 transition"
+            />
+            <datalist id="station-suggestions">
+              {stations.map((station) => (
+                <option key={station.id} value={station.name} />
+              ))}
+            </datalist>
+
+            {hubNameInput.trim() && (
+              matchedExistingStation ? (
+                <p className="text-[10px] text-teal-700 font-semibold mt-1.5">
+                  ✅ 기존에 등록된 거점입니다. 저장된 좌표를 그대로 사용합니다.
+                </p>
+              ) : (
+                <div className="mt-2">
+                  {!isPickerOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsPickerOpen(true)}
+                      className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-teal-50 border border-teal-200 text-teal-800 font-bold rounded-xl text-[11px] hover:bg-teal-100 transition cursor-pointer"
+                    >
+                      <Icons.MapPin size={13} />
+                      {pickedCoords ? '📍 지도에서 위치 다시 지정하기' : '새 거점이에요 — 지도에서 위치 지정하기'}
+                    </button>
+                  ) : (
+                    <StationMapPicker
+                      initialLat={pickedCoords?.lat}
+                      initialLng={pickedCoords?.lng}
+                      onLocationConfirmed={(lat, lng) => {
+                        setPickedCoords({ lat, lng });
+                        setIsPickerOpen(false);
+                      }}
+                    />
+                  )}
+                  {pickedCoords && !isPickerOpen && (
+                    <p className="text-[10px] text-slate-400 mt-1.5">
+                      📍 확정된 좌표: {pickedCoords.lat.toFixed(6)}, {pickedCoords.lng.toFixed(6)}
+                    </p>
+                  )}
+                </div>
+              )
             )}
           </div>
 
@@ -270,7 +347,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           ) : (
             <button
               type="submit"
-              disabled={isSubmitting || stations.length === 0}
+              disabled={isSubmitting}
               className="w-full md:w-auto px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl text-xs transition shadow-md cursor-pointer disabled:opacity-50"
             >
               {isSubmitting ? '위탁 등록 승인 중...' : '공유 거점에 물품 위탁 신청하기'}
