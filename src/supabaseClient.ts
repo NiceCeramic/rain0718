@@ -74,15 +74,24 @@ export const saveKakaoAppKey = (key: string) => {
 let supabaseInstance: SupabaseClient | null = null;
 
 export const getSupabaseClient = (): SupabaseClient | null => {
+  // Prefer env vars (set on Vercel etc.) so the app works on any device/browser
+  // without needing localStorage to be manually configured first.
+  const envUrl = import.meta.env.VITE_SUPABASE_URL;
+  const envAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
   const config = getSupabaseConfig();
-  if (!config.isEnabled || !config.url || !config.anonKey) {
+
+  const url = envUrl || (config.isEnabled ? config.url : '');
+  const anonKey = envAnonKey || (config.isEnabled ? config.anonKey : '');
+
+  if (!url || !anonKey) {
     supabaseInstance = null;
     return null;
   }
 
   if (!supabaseInstance) {
     try {
-      supabaseInstance = createClient(config.url, config.anonKey, {
+      supabaseInstance = createClient(url, anonKey, {
         auth: {
           persistSession: true,
           autoRefreshToken: true
