@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ItemCategory, User } from '../types';
-import { INITIAL_HUBS } from '../data';
-import { api } from '../supabaseClient';
+import { api, Station } from '../supabaseClient';
 import { Icons } from './Icons';
 
 interface ConsignmentFormProps {
@@ -26,12 +25,32 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
 }) => {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<ItemCategory>('우산');
-  const [hubName, setHubName] = useState(INITIAL_HUBS[0].name);
+  const [stations, setStations] = useState<Station[]>([]);
+  const [isLoadingStations, setIsLoadingStations] = useState(true);
+  const [hubName, setHubName] = useState('');
   const [price, setPrice] = useState(1000);
   const [color, setColor] = useState(COLOR_PRESETS[0].hex);
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Load real consignment hubs (public.stations) instead of the old hardcoded INITIAL_HUBS
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      setIsLoadingStations(true);
+      const fetchedStations = await api.getStations();
+      if (!isMounted) return;
+      setStations(fetchedStations);
+      if (fetchedStations.length > 0) {
+        setHubName(fetchedStations[0].name);
+      }
+      setIsLoadingStations(false);
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +67,11 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       return;
     }
 
+    if (stations.length === 0) {
+      setMessage({ type: 'error', text: '등록된 위탁 거점이 아직 없습니다. 관리자가 거점을 먼저 등록해야 위탁이 가능합니다.' });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -56,16 +80,14 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
         title: title.trim(),
         category,
         location: hubName,
-        distance: INITIAL_HUBS.find(h => h.name === hubName)?.address.includes('도보')
-          ? INITIAL_HUBS.find(h => h.name === hubName)?.address.match(/도보 \d+분/)?.[0] || '도보 5분'
-          : '도보 5분',
+        distance: '내 위치 기준 확인 필요',
         price: Number(price),
         color,
         status: 'available' as const,
         description: description.trim() || `${category} 위탁 보관 물품입니다.`,
         rating: 5.0,
         reviews: 0,
-        viewers: Math.floor(Math.random() * 3) + 1
+        viewers: 0
       };
 
       await api.insertItem(newItem);
@@ -146,17 +168,27 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-slate-700 font-bold mb-1.5">위탁 거점 보관함 선택</label>
-            <select
-              value={hubName}
-              onChange={(e) => setHubName(e.target.value)}
-              className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-500 hover:border-slate-300 transition appearance-none cursor-pointer"
-            >
-              {INITIAL_HUBS.map((hub) => (
-                <option key={hub.id} value={hub.name}>
-                  [{hub.type === 'store' ? '편의점' : hub.type === 'cafe' ? '카페' : '세탁소'}] {hub.name}
-                </option>
-              ))}
-            </select>
+            {isLoadingStations ? (
+              <div className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-400">
+                거점 목록을 불러오는 중...
+              </div>
+            ) : stations.length === 0 ? (
+              <div className="w-full px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 leading-relaxed">
+                ⚠️ 등록된 위탁 거점이 아직 없습니다. Supabase의 <code className="font-mono">stations</code> 테이블에 거점을 먼저 등록해주세요.
+              </div>
+            ) : (
+              <select
+                value={hubName}
+                onChange={(e) => setHubName(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-500 hover:border-slate-300 transition appearance-none cursor-pointer"
+              >
+                {stations.map((station) => (
+                  <option key={station.id} value={station.name}>
+                    {station.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div>
@@ -238,7 +270,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           ) : (
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || stations.length === 0}
               className="w-full md:w-auto px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl text-xs transition shadow-md cursor-pointer disabled:opacity-50"
             >
               {isSubmitting ? '위탁 등록 승인 중...' : '공유 거점에 물품 위탁 신청하기'}
