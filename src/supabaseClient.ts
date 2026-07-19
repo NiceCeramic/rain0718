@@ -165,7 +165,12 @@ export const api = {
       try {
         const { data, error } = await supabase
           .from('items')
-          .insert([newItem])
+          .insert([{
+            ...newItem,
+            // public.items has a NOT NULL price_per_hour column separate from `price`;
+            // keep both in sync so inserts don't fail even before the SQL migration runs.
+            price_per_hour: (newItem as any).price ?? 0
+          }])
           .select()
           .single();
 
