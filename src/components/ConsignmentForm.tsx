@@ -35,6 +35,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   const [pickedCoords, setPickedCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   const [price, setPrice] = useState(1000);
+  const [quantity, setQuantity] = useState(1);
   const [color, setColor] = useState(COLOR_PRESETS[0].hex);
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -129,6 +130,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
         location: targetStation.name,
         distance: '내 위치 기준 확인 필요',
         price: Number(price),
+        quantity: Math.max(1, Number(quantity)),
         color,
         status: 'available' as const,
         description: description.trim() || `${category} 위탁 보관 물품입니다.`,
@@ -145,6 +147,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       // Reset form
       setTitle('');
       setPrice(1000);
+      setQuantity(1);
       setDescription('');
       setHubNameInput('');
       setPickedCoords(null);
@@ -279,6 +282,22 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
               className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-500 hover:border-slate-300 transition"
             />
           </div>
+        </div>
+
+        {/* Quantity */}
+        <div>
+          <label className="block text-slate-700 font-bold mb-1.5">대여 가능 수량 (개)</label>
+          <input
+            type="number"
+            value={quantity}
+            onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
+            min={1}
+            step={1}
+            className="w-full md:w-40 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-500 hover:border-slate-300 transition"
+          />
+          <p className="text-[10px] text-slate-400 mt-1.5">
+            같은 종류의 물건을 여러 개 위탁하는 경우, 몇 개까지 동시에 빌려줄 수 있는지 입력해주세요. 전부 대여되면 자동으로 대여 신청이 막힙니다.
+          </p>
         </div>
 
         {/* Signature Color Presets */}
