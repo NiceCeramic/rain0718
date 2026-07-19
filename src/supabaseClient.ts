@@ -231,9 +231,34 @@ export const api = {
         console.warn('Supabase getStations failed:', err);
       }
     }
-    // No local/mock fallback on purpose — an empty list is the honest answer
+  // No local/mock fallback on purpose — an empty list is the honest answer
     // when Supabase isn't configured or no stations have been registered yet.
     return [];
+  },
+
+  insertStation: async (
+    name: string,
+    latitude: number | null = null,
+    longitude: number | null = null
+  ): Promise<Station | null> => {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      console.warn('insertStation failed: Supabase is not configured.');
+      return null;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('stations')
+        .insert([{ name: name.trim(), latitude, longitude }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as Station;
+    } catch (err) {
+      console.warn('Supabase insertStation failed:', err);
+      return null;
+    }
   },
 
   // 2. RENTALS
