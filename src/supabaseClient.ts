@@ -74,8 +74,6 @@ export const saveKakaoAppKey = (key: string) => {
 let supabaseInstance: SupabaseClient | null = null;
 
 export const getSupabaseClient = (): SupabaseClient | null => {
-  // Prefer env vars (set on Vercel etc.) so the app works on any device/browser
-  // without needing localStorage to be manually configured first.
   const envUrl = import.meta.env.VITE_SUPABASE_URL;
   const envAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -114,15 +112,6 @@ export interface Station {
   longitude: number | null;
 }
 
-// ---------------------------------------------------------------------------
-// NOTE ON MAPPING:
-// The DB schema (public.rentals) uses `renter_id` as the column name, while
-// the frontend (App.tsx / types.ts) uses `user_id`. The DB also does not have
-// `deposit` / `price_paid` columns on rentals, nor a `phone` column on
-// `public.users`. Rather than touching App.tsx or re-running SQL, we translate
-// between DB shape and frontend shape right here in the adapter layer.
-// ---------------------------------------------------------------------------
-
 const mapDbRentalToRental = (row: any): Rental => ({
   ...row,
   user_id: row.renter_id,
@@ -149,7 +138,6 @@ export const api = {
 
         if (error) throw error;
         if (data) {
-          // Map to match frontend types if column names are direct
           return data as Item[];
         }
       } catch (err) {
@@ -159,8 +147,6 @@ export const api = {
     return getLocalItems();
   },
 
-  // Counts currently-active (not yet returned/canceled) rentals per item, across all users.
-  // Used to compute "재고 - 대여중 = 남은 수량" for the browse feed.
   getActiveRentalCounts: async (): Promise<Record<string, number>> => {
     const supabase = getSupabaseClient();
     if (supabase) {
@@ -193,8 +179,6 @@ export const api = {
           .from('items')
           .insert([{
             ...newItem,
-            // public.items has a NOT NULL price_per_hour column separate from `price`;
-            // keep both in sync so inserts don't fail even before the SQL migration runs.
             price_per_hour: (newItem as any).price ?? 0
           }])
           .select()
@@ -246,7 +230,7 @@ export const api = {
     return true;
   },
 
-  // 1b. STATIONS (real hubs/보관함, from public.stations — replaces the old hardcoded INITIAL_HUBS)
+  // 1b. STATIONS
   getStations: async (): Promise<Station[]> => {
     const supabase = getSupabaseClient();
     if (supabase) {
@@ -262,8 +246,6 @@ export const api = {
         console.warn('Supabase getStations failed:', err);
       }
     }
-  // No local/mock fallback on purpose — an empty list is the honest answer
-    // when Supabase isn't configured or no stations have been registered yet.
     return [];
   },
 
@@ -305,8 +287,6 @@ export const api = {
         if (error) throw error;
         if (data) {
           const mapped = (data as any[]).map(mapDbRentalToRental);
-
-          // If we are admin, return all, otherwise filter for user_id
           const userObj = getLocalUsers().find(u => u.id === userId) || { role: 'user' };
           if (userObj.role === 'admin') {
             return mapped;
@@ -338,35 +318,23 @@ export const api = {
           item_id: newRental.item_id,
           status: newRental.status,
           deposit_status: newRental.deposit_status
-          // NOTE: `deposit` / `price_paid` are not columns on public.rentals.
-          // If you want them persisted, run in Supabase SQL editor:
-          //   alter table public.rentals add column if not exists deposit integer default 0;
-          //   alter table public.rentals add column if not exists price_paid integer default 0;
-          // then uncomment the two lines below.
-          // deposit: newRental.deposit,
-          // price_paid: newRental.price_paid,
         }])
         .select()
         .single();
 
       if (error) {
-        // Real rejections (e.g. the stock-exhausted trigger, RLS denial) must
-        // reach the caller as a real failure — silently falling back to
-        // localStorage here would tell the user "성공" when the item was
-        // actually sold out.
         throw error;
       }
       if (data) {
         return {
           ...mapDbRentalToRental(data),
-          // preserve values the DB doesn't store yet, so the UI still shows them
           deposit: newRental.deposit,
           price_paid: newRental.price_paid
         };
       }
     }
 
-    // Local Fallback — only used when Supabase isn't configured at all
+    // Local Fallback
     const localRentals = getLocalRentals();
     const mockId = 'rent-' + (localRentals.length + 1) + '-' + Math.floor(Math.random() * 1000);
     const rentalWithId: Rental = {
@@ -434,14 +402,12 @@ export const api = {
           .from('users')
           .select('*')
           .eq('id', userId)
-          .maybeSingle(); // returns null instead of a 406 error when 0 rows exist
+          .maybeSingle();
 
         if (error) throw error;
         if (data) {
           return data as User;
         }
-        // No row found for this user yet (e.g. first login after a schema reset) —
-        // fall through to local storage / let the caller create a new profile.
       } catch (err) {
         console.warn('Supabase getUser failed:', err);
       }
@@ -451,7 +417,6 @@ export const api = {
   },
 
   upsertUser: async (user: User): Promise<void> => {
-    // Keep local registry updated for permissions mapping
     const localUsers = getLocalUsers();
     const index = localUsers.findIndex(u => u.id === user.id);
     if (index >= 0) {
@@ -464,18 +429,15 @@ export const api = {
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        // First try to select
         const { data } = await supabase
           .from('users')
           .select('*')
           .eq('id', user.id)
-          .maybeSingle(); // returns null instead of a 406 error when 0 rows exist
+          .maybeSingle();
 
         if (data) {
           await supabase
             .from('users')
-            // NOTE: public.users has no `phone` column (that lives on public.profiles).
-            // Sending it here would cause a "column not found" error, so it's omitted.
             .update({ name: user.name, role: user.role })
             .eq('id', user.id);
         } else {
@@ -486,6 +448,76 @@ export const api = {
       } catch (err) {
         console.warn('Supabase upsertUser failed:', err);
       }
+    }
+  },
+
+  // 💬 4. CHAT (실시간 1:1 대여 문의 채팅 API 추가)
+  getOrCreateChatRoom: async (itemId: number | string, buyerId: string, sellerId: string) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return null;
+
+    try {
+      // 기존 채팅방 유무 검색
+      const { data: existing, error: searchErr } = await supabase
+        .from('chat_rooms')
+        .select('*')
+        .eq('item_id', itemId)
+        .eq('buyer_id', buyerId)
+        .eq('seller_id', sellerId)
+        .maybeSingle();
+
+      if (existing) return existing;
+
+      // 없으면 새로 생성
+      const { data: created, error: createErr } = await supabase
+        .from('chat_rooms')
+        .insert([{ item_id: itemId, buyer_id: buyerId, seller_id: sellerId }])
+        .select()
+        .single();
+
+      if (createErr) throw createErr;
+      return created;
+    } catch (err) {
+      console.error('getOrCreateChatRoom failed:', err);
+      return null;
+    }
+  },
+
+  getMessages: async (roomId: string) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    } catch (err) {
+      console.error('getMessages failed:', err);
+      return [];
+    }
+  },
+
+  sendMessage: async (roomId: string, senderId: string, text: string) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([{ room_id: roomId, sender_id: senderId, message_text: text }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('sendMessage failed:', err);
+      return null;
     }
   }
 };
