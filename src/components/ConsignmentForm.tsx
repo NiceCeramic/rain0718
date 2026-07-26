@@ -26,11 +26,11 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState('1000');
   const [selectedStationName, setSelectedStationName] = useState<string>(availableStations[0].name);
-  
-  // 📍 새 거점 등록용 state (위치명, 위도, 경도)
+
+  // 📍 신규 거점 정보 (위치명, 위도, 경도)
   const [customLocation, setCustomLocation] = useState('');
-  const [latitude, setLatitude] = useState('36.990');
-  const [longitude, setLongitude] = useState('127.085');
+  const [latitude, setLatitude] = useState('37.200');
+  const [longitude, setLongitude] = useState('127.080');
 
   const [quantity, setQuantity] = useState('1');
   const [color, setColor] = useState('#0f766e');
@@ -42,12 +42,32 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
     }
   }, [stations]);
 
-  // 📸 이미지 및 업로드 상태
+  // 📸 이미지 관련 State
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 🗺️ 지도 클릭 시 위도/경도 자동 계산 및 마커 찍기
+  const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    // 미니맵 영역 상대 좌표 기반 위도/경도 변환 공식
+    const baseLat = parseFloat(latitude) || 37.200;
+    const baseLng = parseFloat(longitude) || 127.080;
+
+    const latDelta = ((rect.height / 2 - clickY) / rect.height) * 0.012;
+    const lngDelta = ((clickX - rect.width / 2) / rect.width) * 0.016;
+
+    const newLat = (baseLat + latDelta).toFixed(5);
+    const newLng = (baseLng + lngDelta).toFixed(5);
+
+    setLatitude(newLat);
+    setLongitude(newLng);
+  };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -97,7 +117,6 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
     let targetLocation = selectedStationName;
 
     try {
-      // 📍 직접 입력한 새 거점이 있으면 DB stations 테이블에 새 위치 좌표 자동 추가
       if (customLocation.trim()) {
         targetLocation = customLocation.trim();
         const latVal = parseFloat(latitude) || null;
@@ -133,6 +152,12 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   };
 
   const colors = ['#0f766e', '#f59e0b', '#3b82f6', '#1e3a8a', '#a855f7', '#22c55e'];
+
+  const mapPreviewUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${
+    parseFloat(longitude) - 0.008
+  }%2C${parseFloat(latitude) - 0.005}%2C${parseFloat(longitude) + 0.008}%2C${
+    parseFloat(latitude) + 0.005
+  }&layer=mapnik&marker=${latitude}%2C${longitude}`;
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs max-w-2xl mx-auto space-y-6">
@@ -252,13 +277,20 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           </div>
         </div>
 
-        {/* 📍 위탁 거점 선택 & 직접 좌표 등록 입력칸 */}
+        {/* 📍 위탁 거점 선택 & 직접 지도 선택 폼 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="font-bold text-slate-700 block">위탁 거점 선택 / 신규 거점 지정</label>
             <select
               value={selectedStationName}
-              onChange={(e) => setSelectedStationName(e.target.value)}
+              onChange={(e) => {
+                setSelectedStationName(e.target.value);
+                const matched = availableStations.find((s) => s.name === e.target.value);
+                if (matched && matched.latitude && matched.longitude) {
+                  setLatitude(String(matched.latitude));
+                  setLongitude(String(matched.longitude));
+                }
+              }}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 font-bold text-slate-800 cursor-pointer"
             >
               {availableStations.map((s) => (
@@ -272,34 +304,57 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
               type="text"
               value={customLocation}
               onChange={(e) => setCustomLocation(e.target.value)}
-              placeholder="신규 거점 생성 시 거점명 직접 입력"
+              placeholder="신규 거점 생성 시 거점명 입력"
               className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 text-[11px]"
             />
 
-            {/* 신규 거점 입력 시 지도 좌표(위도/경도) 지정 폼 */}
+            {/* 🗺️ 신규 거점 지정 시 지도 클릭으로 좌표 찍기 */}
             {customLocation.trim() && (
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <div>
-                  <label className="text-[10px] text-slate-500 font-bold">위도(Latitude)</label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={latitude}
-                    onChange={(e) => setLatitude(e.target.value)}
-                    placeholder="36.990"
-                    className="w-full px-3 py-1.5 bg-teal-50/50 border border-teal-200 rounded-xl text-[10px] font-mono"
-                  />
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-teal-800">
+                    👇 지도를 클릭하면 클릭한 위치의 좌표가 자동 입력됩니다
+                  </span>
                 </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 font-bold">경도(Longitude)</label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={longitude}
-                    onChange={(e) => setLongitude(e.target.value)}
-                    placeholder="127.085"
-                    className="w-full px-3 py-1.5 bg-teal-50/50 border border-teal-200 rounded-xl text-[10px] font-mono"
-                  />
+
+                <div
+                  onClick={handleMapClick}
+                  className="w-full h-44 rounded-2xl overflow-hidden border-2 border-teal-500/40 relative cursor-crosshair shadow-inner"
+                >
+                  <iframe
+                    title="신규 거점 위치 선택"
+                    width="100%"
+                    height="100%"
+                    frameBorder="0"
+                    scrolling="no"
+                    src={mapPreviewUrl}
+                    className="w-full h-full pointer-events-none"
+                  ></iframe>
+
+                  <div className="absolute top-2 right-2 bg-slate-900/80 text-white px-2.5 py-1 rounded-xl text-[10px] font-mono pointer-events-none">
+                    🎯 지도 클릭하여 위치 지정
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold">위도(Latitude)</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={latitude}
+                      className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-mono font-bold text-teal-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold">경도(Longitude)</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={longitude}
+                      className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-mono font-bold text-teal-800"
+                    />
+                  </div>
                 </div>
               </div>
             )}
