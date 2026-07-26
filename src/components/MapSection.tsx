@@ -4,22 +4,25 @@ import { Station } from '../supabaseClient';
 import { Icons } from './Icons';
 
 interface MapSectionProps {
-  stations: Station[];
-  items: Item[];
+  stations?: Station[];
+  items?: Item[];
   selectedHubId: string | null;
   onSelectHub: (hubId: string | null) => void;
   kakaoAppKey?: string;
 }
 
 export const MapSection: React.FC<MapSectionProps> = ({
-  stations,
-  items,
+  stations = [], // 🛡️ undefined 방지 기본값 세팅
+  items = [],    // 🛡️ undefined 방지 기본값 세팅
   selectedHubId,
   onSelectHub,
 }) => {
   const [currentLocationText, setCurrentLocationText] = useState<string>('경기도 평택시 / 주변 거점');
 
-  // 사용자의 대략적인 위치 이름 확인 (예외 처리 철저 적용)
+  // 안전하게 배열 검증
+  const safeStations = Array.isArray(stations) ? stations : [];
+  const safeItems = Array.isArray(items) ? items : [];
+
   useEffect(() => {
     try {
       if (navigator.geolocation) {
@@ -28,7 +31,7 @@ export const MapSection: React.FC<MapSectionProps> = ({
             setCurrentLocationText('현재 위치 기준 주변 공유 거점');
           },
           () => {
-            setCurrentLocationText('기본 지역 (평택/시흥) 공유 거점');
+            setCurrentLocationText('기본 지역 공유 거점');
           },
           { timeout: 5000 }
         );
@@ -64,15 +67,15 @@ export const MapSection: React.FC<MapSectionProps> = ({
         )}
       </div>
 
-      {/* 거점 목록 카드 그리드 (빈 박스 오류 완전 차단 및 시각화 개선) */}
+      {/* 거점 목록 카드 그리드 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
-        {stations.length === 0 ? (
+        {safeStations.length === 0 ? (
           <div className="col-span-full py-10 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-            등록된 공유 거점이 없습니다. 위탁 등록에서 새 거점을 추가해 보세요!
+            등록된 공유 거점을 불러오는 중이거나 거점이 없습니다.
           </div>
         ) : (
-          stations.map((station) => {
-            const hubItems = items.filter(
+          safeStations.map((station) => {
+            const hubItems = safeItems.filter(
               (i) => i.location === station.name || (i as any).hub_name === station.name
             );
             const isSelected = selectedHubId === String(station.id);
