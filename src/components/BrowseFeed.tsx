@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Item, ItemCategory, User } from '../types';
 import { Icons } from './Icons';
 import { motion, AnimatePresence } from 'motion/react';
+import { api } from '../supabaseClient';
+import { ChatModal } from './ChatModal';
 
 interface BrowseFeedProps {
   items: Item[];
@@ -25,15 +27,21 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
   rentalCounts
 }) => {
   // Remaining stock = quantity registered by the owner - currently active rentals.
-  // Defaults to 1 total / 0 rented if an item predates the quantity column.
   const getRemainingStock = (item: Item): number => {
     const total = (item as any).quantity ?? 1;
     const rented = rentalCounts[String(item.id)] || 0;
     return Math.max(0, total - rented);
   };
+
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+
+  // 💬 채팅 모달 상태 관리
+  const [activeChatRoom, setActiveChatRoom] = useState<{
+    roomId: string;
+    itemTitle: string;
+  } | null>(null);
 
   // Filter items
   const filteredItems = items.filter((item) => {
@@ -100,6 +108,34 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     setSelectedItem(null);
   };
 
+  // 💬 1:1 대여 문의 채팅방 생성 및 열기 함수
+  const handleOpenChat = async (item: Item) => {
+    if (!currentUser || currentUser.role === 'guest') {
+      onShowAuthModal();
+      return;
+    }
+
+    const sellerId = (item as any).owner_id || (item as any).user_id || 'seller-dummy-id';
+
+    try {
+      const room = await (api as any).getOrCreateChatRoom(
+        item.id,
+        currentUser.id,
+        sellerId
+      );
+
+      if (room) {
+        setSelectedItem(null); // 물건 상세 모달 닫기
+        setActiveChatRoom({
+          roomId: room.id,
+          itemTitle: item.title
+        });
+      }
+    } catch (err) {
+      console.error('Chat room open error:', err);
+    }
+  };
+
   return (
     <div className="space-y-5">
       {/* Search Input Bar */}
@@ -148,7 +184,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
           </button>
         ))}
 
-        {/* Pulse badge — shows the real count only, hidden when there's nothing to report */}
         {items.filter(i => i.status === 'rented').length > 0 && (
           <div className="ml-auto hidden md:flex items-center gap-1.5 text-xs font-bold text-[#0f766e] bg-teal-50/60 px-4 py-2 rounded-full border border-teal-200 animate-pulse">
             <Icons.Eye size={12} />
@@ -157,7 +192,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
         )}
       </div>
 
-      {/* Clean Minimalism Product Feed Grid */}
+      {/* Product Feed Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredItems.length === 0 ? (
           <div className="col-span-full bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-500">
@@ -179,14 +214,12 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   !isAvailable ? 'opacity-60 grayscale-[0.5]' : ''
                 }`}
               >
-                {/* Rented Out or Maintenance Overlays */}
                 {!isAvailable && (
                   <div className="absolute top-4 right-4 z-10 bg-slate-900 text-white text-[10px] px-2.5 py-1 rounded font-bold uppercase tracking-widest">
                     {isSoldOut ? '품절' : isRented ? 'Rented Out' : 'Checking'}
                   </div>
                 )}
 
-                {/* Viewers Floating Badge */}
                 {item.viewers > 0 && isAvailable && (
                   <div className="absolute top-4 left-4 z-10 bg-[#0f766e] text-white font-bold text-[9px] px-2.5 py-1 rounded-full flex items-center gap-1 shadow-xs pointer-events-none animate-pulse">
                     <Icons.Eye size={10} />
@@ -194,12 +227,10 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   </div>
                 )}
 
-                {/* Product Thumbnail Box */}
                 <div className="w-full aspect-video bg-teal-50/40 rounded-2xl mb-4 flex items-center justify-center group-hover:scale-95 transition-transform overflow-hidden">
                   {renderItemThumbnail(item.category, item.color)}
                 </div>
 
-                {/* Product Title & Badge */}
                 <div className="flex justify-between items-start mb-2 gap-2">
                   <h3 className="font-bold text-slate-900 text-sm truncate group-hover:text-teal-700 transition">
                     {item.title}
@@ -211,13 +242,11 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   )}
                 </div>
 
-                {/* Location with micro icon */}
                 <p className="text-xs text-slate-500 mb-4 flex items-center gap-1">
                   <Icons.MapPin size={12} className="text-slate-400" />
                   <span>{item.location} ({item.distance})</span>
                 </p>
 
-                {/* Footer specs */}
                 <div className="mt-auto flex items-center justify-between border-t border-slate-200 pt-4">
                   <span className="text-sm font-black text-slate-800">
                     ₩{item.price.toLocaleString()} <span className="text-[10px] font-normal text-slate-400 uppercase">/ hour</span>
@@ -234,7 +263,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
         )}
       </div>
 
-      {/* Item Detail Modal (대여 상세 정보 모달) */}
+      {/* Item Detail Modal */}
       <AnimatePresence>
         {selectedItem && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
@@ -244,7 +273,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
               exit={{ scale: 0.95, opacity: 0 }}
               className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col"
             >
-              {/* Product Visual Header */}
               <div className="h-44 relative flex items-center justify-center" style={{ backgroundColor: `${selectedItem.color}15` }}>
                 <div className="absolute inset-0 bg-[radial-gradient(#ffffff_1.5px,transparent_1.5px)] [background-size:16px_16px] opacity-40"></div>
                 <div className="p-4 rounded-full bg-white/40 backdrop-blur-xs shadow-inner">
@@ -264,7 +292,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                 </button>
               </div>
 
-              {/* Details Body */}
               <div className="p-6 text-xs space-y-4">
                 <div>
                   <div className="flex items-center gap-1.5 mb-1.5">
@@ -284,7 +311,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   </h2>
                 </div>
 
-                {/* Description */}
                 <div>
                   <h4 className="font-bold text-slate-700 mb-1">상세 설명</h4>
                   <p className="text-slate-500 leading-relaxed text-[11px] bg-slate-50 p-3 rounded-xl border border-slate-200">
@@ -292,7 +318,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   </p>
                 </div>
 
-                {/* Deposit & Fee Box */}
                 <div className="bg-teal-50/20 border border-teal-200 rounded-2xl p-4 space-y-2.5">
                   <div className="flex justify-between items-center text-[11px] text-slate-600">
                     <span>시간당 대여료</span>
@@ -315,7 +340,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   ⚠️ 보증금은 미납 및 고의 유실, 파손을 예방하기 위한 조치이며 반납 즉시 자동 환급됩니다.
                 </div>
 
-                {/* Remaining Stock Line */}
                 <div className="flex justify-between items-center text-[11px] text-slate-600 -mt-2">
                   <span>남은 수량</span>
                   <span className={`font-bold ${getRemainingStock(selectedItem) > 0 ? 'text-teal-700' : 'text-rose-600'}`}>
@@ -323,8 +347,8 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   </span>
                 </div>
 
-                {/* Footer Actions */}
-                <div className="pt-2">
+                {/* 💬 대여 신청 & 1:1 대여 문의 하단 버튼 세트 */}
+                <div className="pt-2 flex flex-col gap-2">
                   {selectedItem.status !== 'available' || getRemainingStock(selectedItem) <= 0 ? (
                     <button
                       disabled
@@ -340,12 +364,23 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                       🔒 일반 에코멤버로 회원 가입 후 대여 가능
                     </button>
                   ) : (
-                    <button
-                      onClick={() => handleRequestRent(selectedItem)}
-                      className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl text-xs transition shadow-md cursor-pointer"
-                    >
-                      🚀 소급 대여 신청하기 (보증금 이체 단계로 이동)
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleRequestRent(selectedItem)}
+                        className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl text-xs transition shadow-md cursor-pointer"
+                      >
+                        🚀 소급 대여 신청하기 (보증금 이체 단계로 이동)
+                      </button>
+
+                      {/* 💬 1:1 대여 문의하기 버튼 */}
+                      <button
+                        onClick={() => handleOpenChat(selectedItem)}
+                        className="w-full py-3 bg-teal-50 hover:bg-teal-100 text-[#0f766e] border border-teal-200 font-bold rounded-2xl text-xs transition flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Icons.MessageSquare size={16} />
+                        <span>💬 1:1 대여 문의하기</span>
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -353,6 +388,16 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
           </div>
         )}
       </AnimatePresence>
+
+      {/* 💬 실시간 1:1 채팅 모달 */}
+      {activeChatRoom && currentUser && (
+        <ChatModal
+          roomId={activeChatRoom.roomId}
+          itemTitle={activeChatRoom.itemTitle}
+          currentUserId={currentUser.id}
+          onClose={() => setActiveChatRoom(null)}
+        />
+      )}
     </div>
   );
 };
