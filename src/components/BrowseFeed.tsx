@@ -29,15 +29,14 @@ type FilterType =
   | '보조배터리';
 
 export const BrowseFeed: React.FC<BrowseFeedProps> = ({
-  items = [], // 🛡️ undefined 방지 기본값
+  items = [],
   currentUser,
   selectedHubId,
   onRent,
   onShowAuthModal,
-  hubNamesMap = {}, // 🛡️ undefined 방지 기본값
-  rentalCounts = {}, // 🛡️ undefined 방지 기본값
+  hubNamesMap = {},
+  rentalCounts = {},
 }) => {
-  // 안전하게 배열 검증
   const safeItems = Array.isArray(items) ? items : [];
 
   const getRemainingStock = (item: Item): number => {
@@ -55,14 +54,16 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     itemTitle: string;
   } | null>(null);
 
+  // 🎯 거점 마커/버튼 선택 시 정확한 물품 필터링 로직
   const filteredItems = safeItems.filter((item) => {
     if (selectedHubId) {
-      const selectedHubName = hubNamesMap[selectedHubId];
-      if (
-        selectedHubName &&
-        item.location !== selectedHubName &&
-        item.hub_name !== selectedHubName
-      ) {
+      // selectedHubId가 ID일 수도 있고, 거점 이름(Name)일 수도 있으므로 둘 다 대응
+      const targetHubName = (hubNamesMap[selectedHubId] || selectedHubId || '').trim();
+      const itemLoc = (item.location || '').trim();
+      const itemHub = ((item as any).hub_name || '').trim();
+
+      // 물품의 location이나 hub_name이 선택한 거점 이름과 다르면 필터링 제외
+      if (itemLoc !== targetHubName && itemHub !== targetHubName) {
         return false;
       }
     }
@@ -86,7 +87,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       const matchTitle = item.title.toLowerCase().includes(query);
-      const matchLoc = (item.location || item.hub_name || '').toLowerCase().includes(query);
+      const matchLoc = (item.location || (item as any).hub_name || '').toLowerCase().includes(query);
       const matchDesc = item.description?.toLowerCase().includes(query) || false;
       return matchTitle || matchLoc || matchDesc;
     }
@@ -164,6 +165,16 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
 
   return (
     <div className="space-y-5">
+      {/* 📍 거점 선택 필터링 적용 중 안내 가이드 */}
+      {selectedHubId && (
+        <div className="bg-teal-50 border border-teal-200 p-3.5 rounded-2xl flex items-center justify-between text-xs text-teal-900 font-bold">
+          <span>📍 현재 '{(hubNamesMap[selectedHubId] || selectedHubId).trim()}' 거점의 물품만 표시 중입니다.</span>
+          <span className="text-[11px] text-teal-700 bg-teal-100/60 px-2.5 py-1 rounded-lg">
+            총 {filteredItems.length}개 검색됨
+          </span>
+        </div>
+      )}
+
       {/* Search Bar */}
       <div className="relative">
         <span className="absolute inset-y-0 left-4 flex items-center text-slate-400">
@@ -227,7 +238,9 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
           <div className="col-span-full bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-500">
             <p className="text-xs font-bold">일치하는 공유 자원이 없습니다.</p>
             <p className="text-[11px] text-slate-400 mt-1">
-              검색어를 수정하거나 다른 카테고리 필터를 선택해보세요.
+              {selectedHubId
+                ? '이 거점에는 아직 위탁 등록된 물품이 없습니다.'
+                : '검색어를 수정하거나 다른 카테고리 필터를 선택해보세요.'}
             </p>
           </div>
         ) : (
@@ -276,8 +289,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                 <p className="text-xs text-slate-500 mb-4 flex items-center gap-1">
                   <Icons.MapPin size={12} className="text-slate-400" />
                   <span className="truncate">
-                    {item.location || item.hub_name} (
-                    {item.distance || '거리 확인'})
+                    {item.location || (item as any).hub_name} ({item.distance || '거리 확인'})
                   </span>
                 </p>
 
@@ -357,7 +369,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                       {selectedItem.category}
                     </span>
                     <span className="text-[10px] text-slate-500 font-bold">
-                      📍 {selectedItem.location || selectedItem.hub_name} (
+                      📍 {selectedItem.location || (selectedItem as any).hub_name} (
                       {selectedItem.distance || '거리 확인'})
                     </span>
                   </div>
