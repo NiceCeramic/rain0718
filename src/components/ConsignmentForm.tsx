@@ -25,9 +25,11 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   const [category, setCategory] = useState<ItemCategory>('우산');
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState('1000');
-  const [selectedStationName, setSelectedStationName] = useState<string>(availableStations[0].name);
+  
+  // 📍 선택된 드롭다운 값 (기본값: 첫 번째 거점)
+  const [selectedStationOption, setSelectedStationOption] = useState<string>(availableStations[0].name);
 
-  // 📍 신규 거점 정보 (초기값: 기본 좌표)
+  // 📍 신규 거점 등록 관련 state
   const [customLocation, setCustomLocation] = useState('');
   const [latitude, setLatitude] = useState('37.200');
   const [longitude, setLongitude] = useState('127.080');
@@ -36,7 +38,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   const [color, setColor] = useState('#0f766e');
   const [description, setDescription] = useState('');
 
-  // 🛰️ GPS 기기 현재 위치 자동 조회 (최초 렌더링 시 실행)
+  // 🛰️ GPS 기기 현재 위치 자동 감지
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -45,7 +47,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           setLongitude(position.coords.longitude.toFixed(5));
         },
         (error) => {
-          console.warn('GPS 권한 미허용 또는 오류:', error.message);
+          console.warn('GPS 권한 미허용:', error.message);
         },
         { enableHighAccuracy: true, timeout: 5000 }
       );
@@ -53,19 +55,18 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   }, []);
 
   useEffect(() => {
-    if (availableStations.length > 0 && (!selectedStationName || selectedStationName === '지정 거점')) {
-      setSelectedStationName(availableStations[0].name);
+    if (availableStations.length > 0 && (!selectedStationOption || selectedStationOption === '지정 거점')) {
+      setSelectedStationOption(availableStations[0].name);
     }
   }, [stations]);
 
-  // 📸 이미지 관련 State
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 🗺️ 지도 클릭 시 위도/경도 자동 계산 및 마커 이동
+  // 🗺️ 지도 클릭 시 좌표 자동 계산
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
@@ -77,11 +78,8 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
     const latDelta = ((rect.height / 2 - clickY) / rect.height) * 0.012;
     const lngDelta = ((clickX - rect.width / 2) / rect.width) * 0.016;
 
-    const newLat = (baseLat + latDelta).toFixed(5);
-    const newLng = (baseLng + lngDelta).toFixed(5);
-
-    setLatitude(newLat);
-    setLongitude(newLng);
+    setLatitude((baseLat + latDelta).toFixed(5));
+    setLongitude((baseLng + lngDelta).toFixed(5));
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,10 +127,16 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
 
     setIsSubmitting(true);
 
-    let targetLocation = selectedStationName;
+    let targetLocation = selectedStationOption;
 
     try {
-      if (customLocation.trim()) {
+      // 📍 '신규 거점 등록' 선택 시 DB stations에 위치 등록
+      if (selectedStationOption === 'NEW_STATION') {
+        if (!customLocation.trim()) {
+          alert('신규 거점 이름을 입력해 주세요.');
+          setIsSubmitting(false);
+          return;
+        }
         targetLocation = customLocation.trim();
         const latVal = parseFloat(latitude) || null;
         const lngVal = parseFloat(longitude) || null;
@@ -156,7 +160,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       } as any;
 
       const created = await api.insertItem(newItemData);
-      alert('공유 물품 및 거점 위치 정보가 성공적으로 등록되었습니다!');
+      alert('공유 물품 및 거점 정보가 성공적으로 등록되었습니다!');
       if (onSuccess) onSuccess(created);
     } catch (err: any) {
       console.error('Consignment insert error:', err);
@@ -173,6 +177,8 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   }%2C${parseFloat(latitude) - 0.005}%2C${parseFloat(longitude) + 0.008}%2C${
     parseFloat(latitude) + 0.005
   }&layer=mapnik&marker=${latitude}%2C${longitude}`;
+
+  const isNewStationMode = selectedStationOption === 'NEW_STATION';
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs max-w-2xl mx-auto space-y-6">
@@ -292,18 +298,21 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           </div>
         </div>
 
-        {/* 📍 위탁 거점 선택 & 직접 지도 선택 폼 */}
+        {/* 📍 위탁 거점 선택 드롭다운 (신규 거점 등록 옵션 추가) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="font-bold text-slate-700 block">위탁 거점 선택 / 신규 거점 지정</label>
             <select
-              value={selectedStationName}
+              value={selectedStationOption}
               onChange={(e) => {
-                setSelectedStationName(e.target.value);
-                const matched = availableStations.find((s) => s.name === e.target.value);
-                if (matched && matched.latitude && matched.longitude) {
-                  setLatitude(String(matched.latitude));
-                  setLongitude(String(matched.longitude));
+                const val = e.target.value;
+                setSelectedStationOption(val);
+                if (val !== 'NEW_STATION') {
+                  const matched = availableStations.find((s) => s.name === val);
+                  if (matched && matched.latitude && matched.longitude) {
+                    setLatitude(String(matched.latitude));
+                    setLongitude(String(matched.longitude));
+                  }
                 }
               }}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 font-bold text-slate-800 cursor-pointer"
@@ -313,41 +322,48 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
                   📍 {s.name}
                 </option>
               ))}
+              <option value="NEW_STATION" className="font-bold text-teal-700">
+                ➕ 신규 거점 등록 (직접 지정)
+              </option>
             </select>
 
-            <input
-              type="text"
-              value={customLocation}
-              onChange={(e) => setCustomLocation(e.target.value)}
-              placeholder="신규 거점 생성 시 거점명 입력"
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 text-[11px]"
-            />
-
-            {/* 🗺️ 신규 거점 지정 시 지도 클릭으로 좌표 찍기 (GPS 자동 위치 바인딩) */}
-            {customLocation.trim() && (
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-teal-800">
-                    📡 현재 GPS 위치 기준 지도 (클릭 시 위치 변경)
-                  </span>
+            {/* ➕ 신규 거점 선택 시 생성 폼 등장 */}
+            {isNewStationMode && (
+              <div className="space-y-3 pt-2 border-t border-teal-100 bg-teal-50/40 p-3.5 rounded-2xl border">
+                <div className="space-y-1">
+                  <label className="font-bold text-teal-900 block">신규 거점 이름</label>
+                  <input
+                    type="text"
+                    value={customLocation}
+                    onChange={(e) => setCustomLocation(e.target.value)}
+                    placeholder="예: 평택 지제역 스마트 공유함"
+                    className="w-full px-3.5 py-2.5 bg-white border border-teal-200 rounded-xl focus:outline-none focus:border-teal-500 font-bold text-xs"
+                    required
+                  />
                 </div>
 
-                <div
-                  onClick={handleMapClick}
-                  className="w-full h-44 rounded-2xl overflow-hidden border-2 border-teal-500/40 relative cursor-crosshair shadow-inner"
-                >
-                  <iframe
-                    title="신규 거점 위치 선택"
-                    width="100%"
-                    height="100%"
-                    frameBorder="0"
-                    scrolling="no"
-                    src={mapPreviewUrl}
-                    className="w-full h-full pointer-events-none"
-                  ></iframe>
+                <div className="space-y-1">
+                  <span className="text-[11px] font-bold text-teal-800 block">
+                    📡 현재 GPS 위치 지도 (클릭 시 위치 지정)
+                  </span>
 
-                  <div className="absolute top-2 right-2 bg-slate-900/80 text-white px-2.5 py-1 rounded-xl text-[10px] font-mono pointer-events-none">
-                    🎯 지도 클릭하여 위치 지정
+                  <div
+                    onClick={handleMapClick}
+                    className="w-full h-40 rounded-xl overflow-hidden border border-teal-300 relative cursor-crosshair shadow-xs"
+                  >
+                    <iframe
+                      title="신규 거점 위치 선택"
+                      width="100%"
+                      height="100%"
+                      frameBorder="0"
+                      scrolling="no"
+                      src={mapPreviewUrl}
+                      className="w-full h-full pointer-events-none"
+                    ></iframe>
+
+                    <div className="absolute top-2 right-2 bg-slate-900/80 text-white px-2 py-1 rounded-lg text-[9px] font-mono pointer-events-none">
+                      🎯 지도를 클릭하여 위치 지정
+                    </div>
                   </div>
                 </div>
 
@@ -358,7 +374,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
                       type="text"
                       readOnly
                       value={latitude}
-                      className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-mono font-bold text-teal-800"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-mono font-bold text-teal-800"
                     />
                   </div>
                   <div>
@@ -367,7 +383,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
                       type="text"
                       readOnly
                       value={longitude}
-                      className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-mono font-bold text-teal-800"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-mono font-bold text-teal-800"
                     />
                   </div>
                 </div>
