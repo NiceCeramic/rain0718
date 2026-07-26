@@ -4,36 +4,38 @@ import { Station, api } from '../supabaseClient';
 import { Icons } from './Icons';
 
 interface ConsignmentFormProps {
-  currentUser: any;
-  stations: Station[];
-  onSuccess: (newItem: Item) => void;
+  currentUser?: any;
+  stations?: Station[];
+  onSuccess?: (newItem: Item) => void;
 }
 
 export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
-  currentUser,
-  stations,
+  currentUser = null,
+  stations = [],
   onSuccess,
 }) => {
+  // 안전한 기본값 배열 세팅
+  const safeStations = Array.isArray(stations) ? stations : [];
+
   const [category, setCategory] = useState<ItemCategory>('우산');
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState('1000');
   const [selectedStationName, setSelectedStationName] = useState<string>(
-    stations.length > 0 ? stations[0].name : '동탄이마트'
+    safeStations.length > 0 ? safeStations[0].name : '지정 거점'
   );
   const [customLocation, setCustomLocation] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [color, setColor] = useState('#0f766e');
   const [description, setDescription] = useState('');
-  
-  // 📸 이미지 및 상태 관리
+
+  // 📸 이미지 및 업로드 상태
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // file input 참조
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 📷 사진 선택 및 이미지 압축 처리 (모바일 완벽 대응)
+  // 📷 사진 선택 / 모바일 카메라 촬영 처리
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -45,7 +47,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       const img = new Image();
       img.src = event.target?.result as string;
       img.onload = () => {
-        // 모바일 웹 용량 조절을 위한 Canvas 압축 (최대 너비 800px)
+        // 모바일 업로드용 용량 압축 (Canvas 이용)
         const canvas = document.createElement('canvas');
         const MAX_WIDTH = 800;
         let width = img.width;
@@ -62,7 +64,6 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          // JPEG 포맷으로 압축
           const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
           setImageUrl(compressedBase64);
         }
@@ -72,11 +73,10 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // 폼 제출
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      alert('제품명을 입력해주세요.');
+      alert('제품명을 입력해 주세요.');
       return;
     }
 
@@ -102,7 +102,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
 
       const created = await api.insertItem(newItemData);
       alert('공유 물품이 성공적으로 등록되었습니다!');
-      onSuccess(created);
+      if (onSuccess) onSuccess(created);
     } catch (err: any) {
       console.error('Consignment insert error:', err);
       alert(`등록 실패: ${err?.message || '입력값을 확인해 주세요.'}`);
@@ -142,7 +142,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
                 key={cat.id}
                 type="button"
                 onClick={() => setCategory(cat.id as ItemCategory)}
-                className={`py-2.5 px-2 rounded-2xl border font-bold transition text-center truncate ${
+                className={`py-2.5 px-2 rounded-2xl border font-bold transition text-center truncate cursor-pointer ${
                   category === cat.id
                     ? 'bg-teal-50 border-teal-500 text-teal-800'
                     : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
@@ -154,13 +154,12 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           </div>
         </div>
 
-        {/* 📸 모바일 대응 물품 실물 사진 등록 영역 */}
+        {/* 📸 카메라 촬영 및 앨범 사진 선택 */}
         <div className="space-y-2">
           <label className="font-bold text-slate-700 block">
             물품 실물 사진 (카메라 촬영 / 앨범 첨부)
           </label>
 
-          {/* 숨겨진 File Input (모바일 카메라/갤러리 연동 핵심) */}
           <input
             type="file"
             ref={fileInputRef}
@@ -171,12 +170,12 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
 
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="w-full sm:w-64 h-36 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50 hover:bg-slate-100/80 transition cursor-pointer flex flex-col items-center justify-center p-3 relative overflow-hidden group"
+            className="w-full sm:w-64 h-36 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50 hover:bg-slate-100 transition cursor-pointer flex flex-col items-center justify-center p-3 relative overflow-hidden group"
           >
             {isCompressing ? (
               <div className="text-slate-400 font-bold flex flex-col items-center gap-1">
                 <span className="animate-spin text-lg">⏳</span>
-                <span>사진 최적화 중...</span>
+                <span>사진 처리 중...</span>
               </div>
             ) : imageUrl ? (
               <>
@@ -205,7 +204,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           )}
         </div>
 
-        {/* 제품명 & 대여료 */}
+        {/* 제품명 및 대여료 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label className="font-bold text-slate-700 block">제품명 (모델명)</label>
@@ -232,7 +231,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           </div>
         </div>
 
-        {/* 위탁 거점 선택 & 대여 가능 수량 */}
+        {/* 위탁 거점 선택 & 수량 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="font-bold text-slate-700 block">위탁 거점 선택 / 직접 위치 지정</label>
@@ -241,10 +240,10 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
               onChange={(e) => setSelectedStationName(e.target.value)}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 font-bold text-slate-800"
             >
-              {stations.length === 0 ? (
-                <option value="동탄이마트">📍 동탄이마트</option>
+              {safeStations.length === 0 ? (
+                <option value="지정 거점">📍 지정 거점</option>
               ) : (
-                stations.map((s) => (
+                safeStations.map((s) => (
                   <option key={s.id} value={s.name}>
                     📍 {s.name}
                   </option>
@@ -283,7 +282,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
                 key={c}
                 type="button"
                 onClick={() => setColor(c)}
-                className={`w-8 h-8 rounded-full transition flex items-center justify-center ${
+                className={`w-8 h-8 rounded-full transition flex items-center justify-center cursor-pointer ${
                   color === c ? 'ring-4 ring-teal-500/30 scale-110' : 'hover:scale-105'
                 }`}
                 style={{ backgroundColor: c }}
