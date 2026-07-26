@@ -25,7 +25,7 @@ export default function App() {
   const [kakaoAppKey, setKakaoAppKey] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
 
-  // Initialize: Load user from localStorage & Supabase settings
+  // Initialize: .env 환경변수 및 localStorage 설정 확인
   useEffect(() => {
     const cachedUser = localStorage.getItem('ecolink_cached_user');
     if (cachedUser) {
@@ -39,21 +39,24 @@ export default function App() {
       }
     }
 
-    const config = getSupabaseConfig();
-    const hasEnvConfig = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
-    
-    setIsConfiguredSupabase(hasEnvConfig || (config.isEnabled && !!config.url));
+    const checkSupabase = () => {
+      const client = getSupabaseClient();
+      const hasEnvConfig = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const config = getSupabaseConfig();
+      return client !== null || hasEnvConfig || (config.isEnabled && !!config.url);
+    };
+
+    setIsConfiguredSupabase(checkSupabase());
     setKakaoAppKey(getKakaoAppKey());
   }, []);
 
-  // Listen to Supabase session changes whenever isConfiguredSupabase is enabled
+  // Supabase 세션 리스너
   useEffect(() => {
     if (!isConfiguredSupabase) return;
 
     const supabase = getSupabaseClient();
     if (!supabase) return;
 
-    // Check existing session on mount/enable to handle Google OAuth redirect
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         api.getUser(session.user.id).then(async (profile) => {
@@ -77,7 +80,6 @@ export default function App() {
       }
     });
 
-    // Listen to active auth session changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
         const cachedUserStr = localStorage.getItem('ecolink_cached_user');
@@ -124,7 +126,6 @@ export default function App() {
     };
   }, [isConfiguredSupabase]);
 
-  // Fetch items & rentals whenever user context or configuration changes
   useEffect(() => {
     loadData();
   }, [currentUser, isConfiguredSupabase]);
@@ -239,16 +240,13 @@ export default function App() {
   };
 
   const handleConfigChange = () => {
-    const config = getSupabaseConfig();
+    const client = getSupabaseClient();
     const hasEnvConfig = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
-    setIsConfiguredSupabase(hasEnvConfig || (config.isEnabled && !!config.url));
+    const config = getSupabaseConfig();
+    setIsConfiguredSupabase(client !== null || hasEnvConfig || (config.isEnabled && !!config.url));
     setKakaoAppKey(getKakaoAppKey());
     loadData();
-    showToast(
-      (hasEnvConfig || config.isEnabled)
-        ? '⚡ Supabase 및 카카오맵 설정이 저장되었습니다.' 
-        : '🏡 로컬 시뮬레이션 모드로 전환되었습니다.'
-    );
+    showToast('⚡ 환경설정이 업데이트되었습니다.');
   };
 
   const hubNamesMap = stations.reduce((acc, station) => {
@@ -267,7 +265,6 @@ export default function App() {
       {/* 1. Left Fixed Sidebar Layout (Desktop) */}
       <aside className="hidden lg:flex w-64 bg-white border-r border-slate-200 flex-col p-6 h-full justify-between shrink-0">
         <div className="space-y-8">
-          {/* 🌿 브랜드 상단 헤더 로고 영역 */}
           <div className="flex items-center gap-3">
             <Icons.EcolinkLogo size={38} className="shrink-0" />
             <div>
@@ -373,7 +370,6 @@ export default function App() {
       {/* 2. Main Work Stream Content Panel */}
       <main className="flex-1 flex flex-col h-full overflow-hidden pb-16 lg:pb-0">
         <header className="h-16 bg-white border-b border-slate-200 px-6 md:px-8 flex items-center justify-between shrink-0">
-          {/* 🌿 모바일 헤더 로고 영역 */}
           <div className="flex items-center gap-2 lg:hidden">
             <Icons.EcolinkLogo size={28} />
             <span className="text-sm font-black text-slate-900">에코링크</span>
@@ -417,7 +413,6 @@ export default function App() {
         {/* Scrollable Contents Section Frame */}
         <section className="p-6 md:p-8 flex flex-col gap-6 flex-1 overflow-y-auto">
           
-          {/* Active Tab Router */}
           {activeTab === 'browse' && (
             <div className="space-y-6">
               <MapSection 
@@ -459,7 +454,6 @@ export default function App() {
             />
           )}
 
-          {/* ⚡ 배너 높이 및 짤림 현상이 전면 보완된 에코 시너지 리포트 구역 */}
           {activeTab === 'browse' && (
             <div className="bg-slate-900 text-white rounded-3xl p-6 md:p-8 relative mt-4 shadow-xl border border-slate-800">
               <div className="absolute top-4 right-6 w-2.5 h-2.5 bg-teal-400 rounded-full shadow-[0_0_12px_rgba(45,212,191,0.8)] animate-pulse"></div>
@@ -513,7 +507,7 @@ export default function App() {
         </section>
       </main>
 
-      {/* 3. Mobile Navigation Bottom Bar (Fixed) */}
+      {/* 3. Mobile Navigation Bottom Bar */}
       <nav className="lg:hidden bg-white border-t border-slate-200 h-16 fixed bottom-0 left-0 right-0 flex items-center justify-around z-40 shadow-lg">
         <button
           onClick={() => setActiveTab('browse')}
@@ -563,7 +557,7 @@ export default function App() {
         </button>
       </nav>
 
-      {/* Floating toast notification */}
+      {/* Toast Notification */}
       {toast && (
         <div className="fixed top-20 right-4 z-50 animate-fadeIn">
           <div className="px-5 py-3.5 rounded-2xl shadow-xl text-xs font-semibold flex items-center gap-2 border bg-slate-900 border-slate-800 text-white">
@@ -573,7 +567,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Developer Settings Config Modal overlay */}
+      {/* Settings Modal */}
       {isSettingsOpen && (
         <SettingsModal 
           onClose={() => setIsSettingsOpen(false)} 
@@ -581,7 +575,7 @@ export default function App() {
         />
       )}
 
-      {/* 🔐 차단벽: 게스트가 아니고 회원이 연동되면 화면을 표시합니다. */}
+      {/* Auth Gate Modal */}
       {shouldShowAuthGate && (
         <AuthGate 
           onLogin={handleLogin} 
