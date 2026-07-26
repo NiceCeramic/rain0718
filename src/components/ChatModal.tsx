@@ -48,6 +48,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         setTimeout(scrollToBottom, 100);
       }
 
+      // 🔔 실시간 메시지 구독 (상대방 메시지 수신)
       const supabase = getSupabaseClient();
       if (supabase) {
         channel = supabase
@@ -86,6 +87,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     scrollToBottom();
   }, [messages]);
 
+  // 💬 메시지 전송 (즉시 화면 표시 + DB 보관)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputMessage.trim() || isSending) return;
@@ -94,16 +96,33 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     setInputMessage('');
     setIsSending(true);
 
+    // 1. 임시 아이디로 즉시 화면에 노출 (속도감 향상)
+    const tempId = `temp-${Date.now()}`;
+    const tempMsg: ChatMessage = {
+      id: tempId,
+      room_id: roomId,
+      sender_id: currentUserId,
+      message: text,
+      created_at: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, tempMsg]);
+    setTimeout(scrollToBottom, 50);
+
     try {
+      // 2. Supabase DB 전송
       const sent = await api.sendMessage(roomId, currentUserId, text);
       if (sent) {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === sent.id)) return prev;
-          return [...prev, sent];
-        });
+        // 실제 DB 저장 완료 아이디로 대체
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? sent : m))
+        );
+      } else {
+        alert('메시지 전송에 실패했습니다. (SQL Editor 권한 구문을 실행해 보세요.)');
       }
     } catch (err) {
       console.error('Failed to send message:', err);
+      alert('메시지 전송 실패');
     } finally {
       setIsSending(false);
       setTimeout(scrollToBottom, 100);
@@ -122,7 +141,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold truncate max-w-[200px]">{itemTitle}</h3>
-              <p className="text-[10px] text-teal-400 font-medium">🥕 당근식 1:1 실시간 대여 문의</p>
+              <p className="text-[10px] text-teal-400 font-medium">🥕 1:1 실시간 대여 문의</p>
             </div>
           </div>
           <button
