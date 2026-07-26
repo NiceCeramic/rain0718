@@ -54,16 +54,17 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     itemTitle: string;
   } | null>(null);
 
-  // 🎯 거점 마커/버튼 선택 시 정확한 물품 필터링 로직
+  // 🎯 거점 선택 시 완벽하고 엄격한 필터링 적용
   const filteredItems = safeItems.filter((item) => {
     if (selectedHubId) {
-      // selectedHubId가 ID일 수도 있고, 거점 이름(Name)일 수도 있으므로 둘 다 대응
-      const targetHubName = (hubNamesMap[selectedHubId] || selectedHubId || '').trim();
-      const itemLoc = (item.location || '').trim();
-      const itemHub = ((item as any).hub_name || '').trim();
+      // 선택된 거점 이름 추출 (공백 제거)
+      const targetName = (hubNamesMap[selectedHubId] || selectedHubId || '').trim().toLowerCase();
+      const itemLoc = (item.location || '').trim().toLowerCase();
+      const itemHub = ((item as any).hub_name || '').trim().toLowerCase();
 
-      // 물품의 location이나 hub_name이 선택한 거점 이름과 다르면 필터링 제외
-      if (itemLoc !== targetHubName && itemHub !== targetHubName) {
+      // 거점 이름이 정확히 일치하거나 포함되는 경우만 통과
+      const isMatched = itemLoc === targetName || itemHub === targetName || itemLoc.includes(targetName) || targetName.includes(itemLoc);
+      if (!isMatched) {
         return false;
       }
     }
@@ -156,7 +157,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
           itemTitle: item.title,
         });
       } else {
-        alert('채팅방을 생성하지 못했습니다. Supabase 연동 상태를 확인해 주세요.');
+        alert('채팅방을 생성하지 못했습니다.');
       }
     } catch (err) {
       console.error('Chat room open error:', err);
@@ -165,12 +166,12 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
 
   return (
     <div className="space-y-5">
-      {/* 📍 거점 선택 필터링 적용 중 안내 가이드 */}
+      {/* 📍 선택된 거점 안내 배너 */}
       {selectedHubId && (
         <div className="bg-teal-50 border border-teal-200 p-3.5 rounded-2xl flex items-center justify-between text-xs text-teal-900 font-bold">
-          <span>📍 현재 '{(hubNamesMap[selectedHubId] || selectedHubId).trim()}' 거점의 물품만 표시 중입니다.</span>
+          <span>📍 선택하신 거점에 등록된 물품만 필터링되어 표시됩니다.</span>
           <span className="text-[11px] text-teal-700 bg-teal-100/60 px-2.5 py-1 rounded-lg">
-            총 {filteredItems.length}개 검색됨
+            총 {filteredItems.length}개 항목
           </span>
         </div>
       )}
@@ -185,7 +186,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="거점명, 대여 자원명 또는 모델명을 검색해보세요..."
-          className="w-full pl-11 pr-5 py-3 bg-white border border-slate-200 rounded-2xl text-xs focus:outline-none focus:border-teal-500 hover:border-slate-300 shadow-xs transition"
+          className="w-full pl-11 pr-5 py-3 bg-white border border-slate-200 rounded-2xl text-xs focus:outline-none focus:border-teal-500 shadow-xs transition"
         />
         {searchQuery && (
           <button
@@ -223,24 +224,15 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
             {chip.label}
           </button>
         ))}
-
-        {safeItems.filter((i) => i.status === 'rented').length > 0 && (
-          <div className="ml-auto hidden md:flex items-center gap-1.5 text-xs font-bold text-[#0f766e] bg-teal-50/60 px-4 py-2 rounded-full border border-teal-200 animate-pulse">
-            <Icons.Eye size={12} />
-            <span>{safeItems.filter((i) => i.status === 'rented').length}명이 대여 중</span>
-          </div>
-        )}
       </div>
 
       {/* Product Feed Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredItems.length === 0 ? (
           <div className="col-span-full bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-500">
-            <p className="text-xs font-bold">일치하는 공유 자원이 없습니다.</p>
+            <p className="text-xs font-bold">선택하신 거점에 일치하는 공유 자원이 없습니다.</p>
             <p className="text-[11px] text-slate-400 mt-1">
-              {selectedHubId
-                ? '이 거점에는 아직 위탁 등록된 물품이 없습니다.'
-                : '검색어를 수정하거나 다른 카테고리 필터를 선택해보세요.'}
+              다른 거점을 선택하거나 전체 거점 보기를 눌러보세요.
             </p>
           </div>
         ) : (
@@ -248,7 +240,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
             const remainingStock = getRemainingStock(item);
             const isSoldOut = remainingStock <= 0;
             const isAvailable = item.status === 'available' && !isSoldOut;
-            const isRented = item.status === 'rented' || isSoldOut;
 
             return (
               <div
@@ -260,14 +251,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
               >
                 {!isAvailable && (
                   <div className="absolute top-4 right-4 z-10 bg-slate-900 text-white text-[10px] px-2.5 py-1 rounded font-bold uppercase tracking-widest">
-                    {isSoldOut ? '품절' : isRented ? 'Rented Out' : 'Checking'}
-                  </div>
-                )}
-
-                {item.viewers > 0 && isAvailable && (
-                  <div className="absolute top-4 left-4 z-10 bg-[#0f766e] text-white font-bold text-[9px] px-2.5 py-1 rounded-full flex items-center gap-1 shadow-xs pointer-events-none animate-pulse">
-                    <Icons.Eye size={10} />
-                    <span>조회 {item.viewers}명</span>
+                    {isSoldOut ? '품절' : 'Rented Out'}
                   </div>
                 )}
 
@@ -289,7 +273,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                 <p className="text-xs text-slate-500 mb-4 flex items-center gap-1">
                   <Icons.MapPin size={12} className="text-slate-400" />
                   <span className="truncate">
-                    {item.location || (item as any).hub_name} ({item.distance || '거리 확인'})
+                    {item.location || (item as any).hub_name}
                   </span>
                 </p>
 
@@ -306,7 +290,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   <button
                     onClick={(e) => handleOpenChat(e, item)}
                     className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-[#0f766e] border border-teal-200 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer"
-                    title="1:1 실시간 문의"
                   >
                     <Icons.MessageSquare size={13} />
                     <span>문의</span>
@@ -369,8 +352,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                       {selectedItem.category}
                     </span>
                     <span className="text-[10px] text-slate-500 font-bold">
-                      📍 {selectedItem.location || (selectedItem as any).hub_name} (
-                      {selectedItem.distance || '거리 확인'})
+                      📍 {selectedItem.location || (selectedItem as any).hub_name}
                     </span>
                   </div>
 
@@ -393,34 +375,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                       {(selectedItem.price || 1000).toLocaleString()}원
                     </span>
                   </div>
-                  <div className="flex justify-between items-center text-[11px] text-slate-600 border-t border-teal-100/40 pt-2">
-                    <div className="flex items-center gap-1">
-                      <span>파손 예방용 반환 보증금</span>
-                      <span
-                        className="inline-flex p-0.5 rounded-full bg-teal-100/60 text-[#0f766e] text-[8px] cursor-help font-bold"
-                        title="반납 시 즉시 100% 환불됩니다."
-                      >
-                        ?
-                      </span>
-                    </div>
-                    <span className="font-bold text-slate-800">10,000원</span>
-                  </div>
-                </div>
-
-                <div className="text-[10px] text-slate-400 text-center leading-normal">
-                  ⚠️ 보증금은 미납 및 고의 유실, 파손을 예방하기 위한 조치이며 반납 즉시 자동 환급됩니다.
-                </div>
-
-                <div className="flex justify-between items-center text-[11px] text-slate-600 -mt-2">
-                  <span>남은 수량</span>
-                  <span
-                    className={`font-bold ${
-                      getRemainingStock(selectedItem) > 0 ? 'text-teal-700' : 'text-rose-600'
-                    }`}
-                  >
-                    {getRemainingStock(selectedItem)}개 / 총{' '}
-                    {(selectedItem as any).quantity ?? 1}개
-                  </span>
                 </div>
 
                 <div className="pt-2 flex flex-col gap-2">
@@ -430,14 +384,14 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                       disabled
                       className="w-full py-3 bg-slate-100 text-slate-400 font-bold rounded-2xl text-xs cursor-not-allowed"
                     >
-                      😢 모두 대여 중인 물건입니다 (품절)
+                      😢 품절된 물건입니다
                     </button>
                   ) : currentUser?.role === 'guest' ? (
                     <button
                       onClick={onShowAuthModal}
                       className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl text-xs transition cursor-pointer text-center"
                     >
-                      🔒 일반 에코멤버로 회원 가입 후 대여 가능
+                      🔒 회원 가입 후 대여 가능
                     </button>
                   ) : (
                     <>
@@ -445,7 +399,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                         onClick={() => handleRequestRent(selectedItem)}
                         className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl text-xs transition shadow-md cursor-pointer"
                       >
-                        🚀 소급 대여 신청하기 (보증금 이체 단계로 이동)
+                        🚀 소급 대여 신청하기
                       </button>
 
                       <button
