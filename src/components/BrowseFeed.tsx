@@ -15,7 +15,7 @@ interface BrowseFeedProps {
   rentalCounts: Record<string, number>; // item id -> currently active rental count
 }
 
-type FilterType = 'all' | '우산' | '양산' | '보조배터리' | 'available';
+type FilterType = 'all' | 'umbrella' | 'sunshade' | 'battery' | 'tools' | 'electronics' | 'etc' | 'available' | '우산' | '양산' | '보조배터리';
 
 export const BrowseFeed: React.FC<BrowseFeedProps> = ({
   items,
@@ -48,14 +48,24 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     // 1. Hub filter from Map
     if (selectedHubId) {
       const selectedHubName = hubNamesMap[selectedHubId];
-      if (selectedHubName && item.location !== selectedHubName) {
+      if (selectedHubName && item.location !== selectedHubName && item.hub_name !== selectedHubName) {
         return false;
       }
     }
 
-    // 2. Tab chips filter
-    if (filter === '우산' || filter === '양산' || filter === '보조배터리') {
-      if (item.category !== filter) return false;
+    // 2. Tab chips filter (한글/영문 매핑 지원)
+    if (filter === 'umbrella' || filter === '우산') {
+      if (item.category !== 'umbrella' && item.category !== '우산') return false;
+    } else if (filter === 'sunshade' || filter === '양산') {
+      if (item.category !== 'sunshade' && item.category !== '양산') return false;
+    } else if (filter === 'battery' || filter === '보조배터리') {
+      if (item.category !== 'battery' && item.category !== '보조배터리') return false;
+    } else if (filter === 'tools') {
+      if (item.category !== 'tools') return false;
+    } else if (filter === 'electronics') {
+      if (item.category !== 'electronics') return false;
+    } else if (filter === 'etc') {
+      if (item.category !== 'etc') return false;
     } else if (filter === 'available') {
       if (item.status !== 'available' || getRemainingStock(item) <= 0) return false;
     }
@@ -64,7 +74,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       const matchTitle = item.title.toLowerCase().includes(query);
-      const matchLoc = item.location.toLowerCase().includes(query);
+      const matchLoc = (item.location || item.hub_name || '').toLowerCase().includes(query);
       const matchDesc = item.description?.toLowerCase().includes(query) || false;
       return matchTitle || matchLoc || matchDesc;
     }
@@ -74,29 +84,19 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
 
   // SVG Item Thumbnails mapping based on categories
   const renderItemThumbnail = (category: ItemCategory, color: string) => {
-    switch (category) {
-      case '우산':
-        return (
-          <div className="w-full h-full rounded-2xl flex items-center justify-center relative overflow-hidden" style={{ backgroundColor: `${color}15` }}>
-            <div className="absolute inset-0 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:12px_12px] opacity-30"></div>
-            <Icons.Umbrella size={52} style={{ color }} className="drop-shadow-sm animate-pulse" />
-          </div>
-        );
-      case '양산':
-        return (
-          <div className="w-full h-full rounded-2xl flex items-center justify-center relative overflow-hidden" style={{ backgroundColor: `${color}15` }}>
-            <div className="absolute inset-0 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:12px_12px] opacity-30"></div>
-            <Icons.Sun size={52} style={{ color }} className="drop-shadow-sm" />
-          </div>
-        );
-      case '보조배터리':
-        return (
-          <div className="w-full h-full rounded-2xl flex items-center justify-center relative overflow-hidden" style={{ backgroundColor: `${color}15` }}>
-            <div className="absolute inset-0 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:12px_12px] opacity-30"></div>
-            <Icons.Battery size={52} style={{ color }} className="drop-shadow-sm" />
-          </div>
-        );
-    }
+    const isUmbrella = category === 'umbrella' || category === '우산';
+    const isSunshade = category === 'sunshade' || category === '양산';
+    const isBattery = category === 'battery' || category === '보조배터리';
+
+    return (
+      <div className="w-full h-full rounded-2xl flex items-center justify-center relative overflow-hidden" style={{ backgroundColor: `${color}15` }}>
+        <div className="absolute inset-0 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:12px_12px] opacity-30"></div>
+        {isUmbrella && <Icons.Umbrella size={52} style={{ color }} className="drop-shadow-sm animate-pulse" />}
+        {isSunshade && <Icons.Sun size={52} style={{ color }} className="drop-shadow-sm" />}
+        {isBattery && <Icons.Battery size={52} style={{ color }} className="drop-shadow-sm" />}
+        {!isUmbrella && !isSunshade && !isBattery && <Icons.Store size={52} style={{ color }} className="drop-shadow-sm" />}
+      </div>
+    );
   };
 
   const handleRequestRent = (item: Item) => {
@@ -109,13 +109,20 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
   };
 
   // 💬 1:1 대여 문의 채팅방 생성 및 열기 함수
-  const handleOpenChat = async (item: Item) => {
+  const handleOpenChat = async (e: React.MouseEvent, item: Item) => {
+    e.stopPropagation(); // 카드 클릭 모달 중복 방지
+    
     if (!currentUser || currentUser.role === 'guest') {
       onShowAuthModal();
       return;
     }
 
     const sellerId = (item as any).owner_id || (item as any).user_id || 'seller-dummy-id';
+
+    if (sellerId === currentUser.id) {
+      alert('본인이 위탁 등록한 물품입니다.');
+      return;
+    }
 
     try {
       const room = await (api as any).getOrCreateChatRoom(
@@ -125,11 +132,13 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
       );
 
       if (room) {
-        setSelectedItem(null); // 물건 상세 모달 닫기
+        setSelectedItem(null); // 물건 상세 모달이 열려있다면 닫기
         setActiveChatRoom({
           roomId: room.id,
           itemTitle: item.title
         });
+      } else {
+        alert('채팅방을 생성하지 못했습니다. Supabase 연동 상태를 확인해 주세요.');
       }
     } catch (err) {
       console.error('Chat room open error:', err);
@@ -165,16 +174,19 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
         {(
           [
             { id: 'all', label: '전체' },
-            { id: '우산', label: '☔ 우산' },
-            { id: '양산', label: '☀️ 양산' },
-            { id: '보조배터리', label: '🔋 보조배터리' },
+            { id: 'umbrella', label: '☔ 우산' },
+            { id: 'sunshade', label: '☀️ 양산' },
+            { id: 'battery', label: '🔋 보조배터리' },
+            { id: 'tools', label: '🛠 공구/생활' },
+            { id: 'electronics', label: '💻 전자제품' },
+            { id: 'etc', label: '📦 기타' },
             { id: 'available', label: '🟢 즉시 대여가능' }
           ] as const
         ).map((chip) => (
           <button
             key={chip.id}
-            onClick={() => setFilter(chip.id)}
-            className={`px-5 py-2 rounded-full text-xs font-bold transition cursor-pointer ${
+            onClick={() => setFilter(chip.id as FilterType)}
+            className={`px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${
               filter === chip.id
                 ? 'bg-slate-900 text-white shadow-md'
                 : 'bg-white border border-slate-200 text-slate-600 hover:border-teal-500 hover:text-[#0f766e]'
@@ -237,29 +249,36 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   </h3>
                   {isAvailable && (
                     <span className="text-[10px] font-bold text-[#0f766e] bg-teal-50 px-2 py-0.5 rounded-md shrink-0 whitespace-nowrap">
-                      대여가능 · 남은 수량 {remainingStock}개
+                      대여가능 · {remainingStock}개 남음
                     </span>
                   )}
                 </div>
 
                 <p className="text-xs text-slate-500 mb-4 flex items-center gap-1">
                   <Icons.MapPin size={12} className="text-slate-400" />
-                  <span>{item.location} ({item.distance})</span>
+                  <span className="truncate">{item.location || item.hub_name} ({item.distance || '거리 확인'})</span>
                 </p>
 
-                <div className="mt-auto flex items-center justify-between border-t border-slate-200 pt-4">
-                  <span className="text-sm font-black text-slate-800">
-                    ₩{item.price.toLocaleString()} <span className="text-[10px] font-normal text-slate-400 uppercase">/ hour</span>
-                  </span>
-                  <span className="text-xs text-slate-400 flex items-center gap-1">
-                    <Icons.Star size={12} className="text-amber-400" />
-                    <span className="font-bold text-slate-700">{item.rating.toFixed(1)}</span>
-                    <span>({item.reviews})</span>
-                  </span>
+                <div className="mt-auto flex items-center justify-between border-t border-slate-200 pt-3">
+                  <div>
+                    <span className="text-sm font-black text-slate-800">
+                      ₩{item.price.toLocaleString()} <span className="text-[10px] font-normal text-slate-400 uppercase">/ 시간</span>
+                    </span>
+                  </div>
+
+                  {/* 피드 카드상 1:1 빠른 대여 문의 버튼 */}
+                  <button
+                    onClick={(e) => handleOpenChat(e, item)}
+                    className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-[#0f766e] border border-teal-200 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer"
+                    title="1:1 실시간 문의"
+                  >
+                    <Icons.MessageSquare size={13} />
+                    <span>문의</span>
+                  </button>
                 </div>
               </div>
             );
-          })
+          })}
         )}
       </div>
 
@@ -276,9 +295,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
               <div className="h-44 relative flex items-center justify-center" style={{ backgroundColor: `${selectedItem.color}15` }}>
                 <div className="absolute inset-0 bg-[radial-gradient(#ffffff_1.5px,transparent_1.5px)] [background-size:16px_16px] opacity-40"></div>
                 <div className="p-4 rounded-full bg-white/40 backdrop-blur-xs shadow-inner">
-                  {selectedItem.category === '우산' && <Icons.Umbrella size={64} style={{ color: selectedItem.color }} />}
-                  {selectedItem.category === '양산' && <Icons.Sun size={64} style={{ color: selectedItem.color }} />}
-                  {selectedItem.category === '보조배터리' && <Icons.Battery size={64} style={{ color: selectedItem.color }} />}
+                  {renderItemThumbnail(selectedItem.category, selectedItem.color)}
                 </div>
 
                 <button
@@ -302,7 +319,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                       {selectedItem.category}
                     </span>
                     <span className="text-[10px] text-slate-500 font-bold">
-                      📍 {selectedItem.location} ({selectedItem.distance})
+                      📍 {selectedItem.location || selectedItem.hub_name} ({selectedItem.distance || '거리 확인'})
                     </span>
                   </div>
 
@@ -374,7 +391,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
 
                       {/* 💬 1:1 대여 문의하기 버튼 */}
                       <button
-                        onClick={() => handleOpenChat(selectedItem)}
+                        onClick={(e) => handleOpenChat(e, selectedItem)}
                         className="w-full py-3 bg-teal-50 hover:bg-teal-100 text-[#0f766e] border border-teal-200 font-bold rounded-2xl text-xs transition flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <Icons.MessageSquare size={16} />
