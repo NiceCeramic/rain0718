@@ -14,12 +14,14 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   stations = [],
   onSuccess,
 }) => {
-  // 안전한 기본값 배열 세팅
+  // 🛡️ stations가 undefined, null이거나 배열이 아닐 때 발생하던 length 에러 완전 방지
   const safeStations = Array.isArray(stations) ? stations : [];
 
   const [category, setCategory] = useState<ItemCategory>('우산');
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState('1000');
+  
+  // 🛡️ safeStations 안전하게 조회
   const [selectedStationName, setSelectedStationName] = useState<string>(
     safeStations.length > 0 ? safeStations[0].name : '지정 거점'
   );
@@ -47,7 +49,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       const img = new Image();
       img.src = event.target?.result as string;
       img.onload = () => {
-        // 모바일 업로드용 용량 압축 (Canvas 이용)
+        // 모바일 웹 용량 압축 (Canvas 이용)
         const canvas = document.createElement('canvas');
         const MAX_WIDTH = 800;
         let width = img.width;
@@ -82,7 +84,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
 
     setIsSubmitting(true);
 
-    const targetLocation = customLocation.trim() || selectedStationName;
+    const targetLocation = customLocation.trim() || selectedStationName || '지정 거점';
 
     try {
       const newItemData: Omit<Item, 'id' | 'created_at'> = {
@@ -154,7 +156,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           </div>
         </div>
 
-        {/* 📸 카메라 촬영 및 앨범 사진 선택 */}
+        {/* 📸 모바일 카메라 촬영 및 앨범 사진 선택 */}
         <div className="space-y-2">
           <label className="font-bold text-slate-700 block">
             물품 실물 사진 (카메라 촬영 / 앨범 첨부)
