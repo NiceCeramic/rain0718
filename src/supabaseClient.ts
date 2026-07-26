@@ -473,6 +473,64 @@ export const api = {
     }
   },
 
+  // 🥕 당근마켓 스타일: 내가 참여한 모든 채팅방 목록 및 연관 정보(상대방 이름, 물품, 마지막 메시지) 조회
+  getMyChatRooms: async (userId: string) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return [];
+
+    try {
+      const { data: rooms, error: roomErr } = await supabase
+        .from('chat_rooms')
+        .select('*')
+        .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
+        .order('created_at', { ascending: false });
+
+      if (roomErr || !rooms) return [];
+
+      const enrichedRooms = await Promise.all(
+        rooms.map(async (room) => {
+          // 물품 정보
+          const { data: item } = await supabase
+            .from('items')
+            .select('title, category, color, location')
+            .eq('id', room.item_id)
+            .maybeSingle();
+
+          // 상대방 정보
+          const otherUserId = room.buyer_id === userId ? room.seller_id : room.buyer_id;
+          const { data: otherUser } = await supabase
+            .from('users')
+            .select('name')
+            .eq('id', otherUserId)
+            .maybeSingle();
+
+          // 마지막 메시지
+          const { data: lastMsgs } = await supabase
+            .from('messages')
+            .select('message, created_at')
+            .eq('room_id', room.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          return {
+            ...room,
+            item_title: item?.title || '공유 자원 물품',
+            item_category: item?.category || '기타',
+            item_color: item?.color || '#0f766e',
+            other_user_name: otherUser?.name || '에코멤버',
+            last_message: lastMsgs && lastMsgs.length > 0 ? lastMsgs[0].message : '대화가 시작되었습니다.',
+            last_time: lastMsgs && lastMsgs.length > 0 ? lastMsgs[0].created_at : room.created_at,
+          };
+        })
+      );
+
+      return enrichedRooms;
+    } catch (err) {
+      console.error('getMyChatRooms failed:', err);
+      return [];
+    }
+  },
+
   getMessages: async (roomId: string) => {
     const supabase = getSupabaseClient();
     if (!supabase) return [];
@@ -497,7 +555,6 @@ export const api = {
     if (!supabase) return null;
 
     try {
-      // 🔑 DB message 컬럼에 명확히 매핑
       const { data, error } = await supabase
         .from('messages')
         .insert([{ room_id: roomId, sender_id: senderId, message: text }])
