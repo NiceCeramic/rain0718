@@ -120,7 +120,7 @@ export const api = {
     return getSupabaseClient() !== null;
   },
 
-  // 1. ITEMS
+  // 1. ITEMS (타인이 등록한 물품 포함 전체 안전 조회)
   getItems: async (): Promise<Item[]> => {
     const supabase = getSupabaseClient();
     if (supabase) {
@@ -130,9 +130,19 @@ export const api = {
           .select('*')
           .order('created_at', { ascending: false });
 
-        if (error) throw error;
+        if (error) {
+          console.error('getItems DB error:', error);
+          throw error;
+        }
+
         if (data) {
-          return data as Item[];
+          return data.map((row: any) => ({
+            ...row,
+            price: row.price ?? row.price_per_hour ?? 1000,
+            location: row.location || row.hub_name || '지정 거점',
+            status: row.status || 'available',
+            quantity: row.quantity ?? 1
+          })) as Item[];
         }
       } catch (err) {
         console.warn('Supabase getItems failed, falling back to local storage:', err);
@@ -165,23 +175,41 @@ export const api = {
     return {};
   },
 
+  // 📸 물품 위탁 등록 (이미지, 거점, 등록자 ID, 수량 안전 저장)
   insertItem: async (newItem: Omit<Item, 'id' | 'created_at'>): Promise<Item> => {
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
+        const payload = {
+          title: newItem.title,
+          category: newItem.category,
+          price: (newItem as any).price ?? 1000,
+          price_per_hour: (newItem as any).price ?? 1000,
+          location: newItem.location || (newItem as any).hub_name || '지정 거점',
+          hub_name: (newItem as any).hub_name || newItem.location || '지정 거점',
+          status: newItem.status || 'available',
+          color: newItem.color || '#0f766e',
+          description: newItem.description || '',
+          viewers: newItem.viewers || 1,
+          image_url: (newItem as any).image_url || null,
+          owner_id: (newItem as any).owner_id || null,
+          quantity: (newItem as any).quantity ?? 1
+        };
+
         const { data, error } = await supabase
           .from('items')
-          .insert([{
-            ...newItem,
-            price_per_hour: (newItem as any).price ?? 0
-          }])
+          .insert([payload])
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase insertItem 상세 에러:', error);
+          throw error;
+        }
         if (data) return data as Item;
       } catch (err) {
         console.warn('Supabase insertItem failed, falling back to local storage:', err);
+        throw err; // 에러를 상위 컴포넌트로 전달하여 alert 원인 파악
       }
     }
 
@@ -441,7 +469,7 @@ export const api = {
     }
   },
 
-  // 💬 4. CHAT (실시간 1:1 대여 문의 채팅 API 정밀 보완)
+  // 💬 4. CHAT (실시간 1:1 대여 문의 채팅 API)
   getOrCreateChatRoom: async (itemId: number | string, buyerId: string, sellerId: string) => {
     const supabase = getSupabaseClient();
     if (!supabase) return null;
@@ -473,7 +501,7 @@ export const api = {
     }
   },
 
-  // 🥕 당근마켓 스타일: 내가 참여한 모든 채팅방 목록 및 연관 정보(상대방 이름, 물품, 마지막 메시지) 조회
+  // 🥕 당근마켓 스타일: 내가 참여한 모든 채팅방 목록 및 연관 정보(상대방 이름, 물품, 사진, 마지막 메시지) 조회
   getMyChatRooms: async (userId: string) => {
     const supabase = getSupabaseClient();
     if (!supabase) return [];
@@ -492,7 +520,7 @@ export const api = {
           // 물품 정보
           const { data: item } = await supabase
             .from('items')
-            .select('title, category, color, location')
+            .select('title, category, color, location, image_url')
             .eq('id', room.item_id)
             .maybeSingle();
 
@@ -517,6 +545,7 @@ export const api = {
             item_title: item?.title || '공유 자원 물품',
             item_category: item?.category || '기타',
             item_color: item?.color || '#0f766e',
+            item_image_url: item?.image_url || null,
             other_user_name: otherUser?.name || '에코멤버',
             last_message: lastMsgs && lastMsgs.length > 0 ? lastMsgs[0].message : '대화가 시작되었습니다.',
             last_time: lastMsgs && lastMsgs.length > 0 ? lastMsgs[0].created_at : room.created_at,
