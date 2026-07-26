@@ -39,6 +39,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     const fetchAndSubscribe = async () => {
       setIsLoading(true);
       try {
+        // 📖 1. 채팅방 입장 즉시 안읽은 메시지 읽음 처리 (is_read = true)
+        await api.markMessagesAsRead(roomId, currentUserId);
+
+        // 2. 대화 내역 불러오기
         const initialMessages = await api.getMessages(roomId);
         setMessages(initialMessages || []);
       } catch (err) {
@@ -48,7 +52,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         setTimeout(scrollToBottom, 100);
       }
 
-      // 🔔 실시간 메시지 구독 (상대방 메시지 수신)
+      // 🔔 3. 실시간 메시지 구독 (상대방 메시지 수신 시 자동 읽음 처리 및 화면 반영)
       const supabase = getSupabaseClient();
       if (supabase) {
         channel = supabase
@@ -61,8 +65,14 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               table: 'messages',
               filter: `room_id=eq.${roomId}`,
             },
-            (payload) => {
+            async (payload) => {
               const newMsg = payload.new as ChatMessage;
+              
+              // 내가 연 방에서 상대방 메시지가 들어오면 즉시 읽음 처리
+              if (newMsg.sender_id !== currentUserId) {
+                await api.markMessagesAsRead(roomId, currentUserId);
+              }
+
               setMessages((prev) => {
                 if (prev.some((m) => m.id === newMsg.id)) return prev;
                 return [...prev, newMsg];
@@ -81,7 +91,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         getSupabaseClient()?.removeChannel(channel);
       }
     };
-  }, [roomId]);
+  }, [roomId, currentUserId]);
 
   useEffect(() => {
     scrollToBottom();
@@ -120,9 +130,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       } else {
         alert('메시지 전송에 실패했습니다. (SQL Editor 권한 구문을 실행해 보세요.)');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to send message:', err);
-      alert('메시지 전송 실패');
+      alert(`메시지 전송 실패: ${err?.message || 'DB 수신 권한 또는 컬럼 문제입니다.'}`);
     } finally {
       setIsSending(false);
       setTimeout(scrollToBottom, 100);
