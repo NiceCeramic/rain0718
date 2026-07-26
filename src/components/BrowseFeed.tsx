@@ -6,26 +6,40 @@ import { api } from '../supabaseClient';
 import { ChatModal } from './ChatModal';
 
 interface BrowseFeedProps {
-  items: Item[];
+  items?: Item[];
   currentUser: User | null;
   selectedHubId: string | null;
   onRent: (item: Item) => void;
   onShowAuthModal: () => void;
-  hubNamesMap: Record<string, string>;
-  rentalCounts: Record<string, number>;
+  hubNamesMap?: Record<string, string>;
+  rentalCounts?: Record<string, number>;
 }
 
-type FilterType = 'all' | 'umbrella' | 'sunshade' | 'battery' | 'tools' | 'electronics' | 'etc' | 'available' | '우산' | '양산' | '보조배터리';
+type FilterType =
+  | 'all'
+  | 'umbrella'
+  | 'sunshade'
+  | 'battery'
+  | 'tools'
+  | 'electronics'
+  | 'etc'
+  | 'available'
+  | '우산'
+  | '양산'
+  | '보조배터리';
 
 export const BrowseFeed: React.FC<BrowseFeedProps> = ({
-  items,
+  items = [], // 🛡️ undefined 방지 기본값
   currentUser,
   selectedHubId,
   onRent,
   onShowAuthModal,
-  hubNamesMap,
-  rentalCounts
+  hubNamesMap = {}, // 🛡️ undefined 방지 기본값
+  rentalCounts = {}, // 🛡️ undefined 방지 기본값
 }) => {
+  // 안전하게 배열 검증
+  const safeItems = Array.isArray(items) ? items : [];
+
   const getRemainingStock = (item: Item): number => {
     const total = (item as any).quantity ?? 1;
     const rented = rentalCounts[String(item.id)] || 0;
@@ -41,10 +55,14 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     itemTitle: string;
   } | null>(null);
 
-  const filteredItems = items.filter((item) => {
+  const filteredItems = safeItems.filter((item) => {
     if (selectedHubId) {
       const selectedHubName = hubNamesMap[selectedHubId];
-      if (selectedHubName && item.location !== selectedHubName && item.hub_name !== selectedHubName) {
+      if (
+        selectedHubName &&
+        item.location !== selectedHubName &&
+        item.hub_name !== selectedHubName
+      ) {
         return false;
       }
     }
@@ -82,12 +100,19 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     const isBattery = category === 'battery' || category === '보조배터리';
 
     return (
-      <div className="w-full h-full rounded-2xl flex items-center justify-center relative overflow-hidden" style={{ backgroundColor: `${color}15` }}>
+      <div
+        className="w-full h-full rounded-2xl flex items-center justify-center relative overflow-hidden"
+        style={{ backgroundColor: `${color}15` }}
+      >
         <div className="absolute inset-0 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:12px_12px] opacity-30"></div>
-        {isUmbrella && <Icons.Umbrella size={52} style={{ color }} className="drop-shadow-sm animate-pulse" />}
+        {isUmbrella && (
+          <Icons.Umbrella size={52} style={{ color }} className="drop-shadow-sm animate-pulse" />
+        )}
         {isSunshade && <Icons.Sun size={52} style={{ color }} className="drop-shadow-sm" />}
         {isBattery && <Icons.Battery size={52} style={{ color }} className="drop-shadow-sm" />}
-        {!isUmbrella && !isSunshade && !isBattery && <Icons.Store size={52} style={{ color }} className="drop-shadow-sm" />}
+        {!isUmbrella && !isSunshade && !isBattery && (
+          <Icons.Store size={52} style={{ color }} className="drop-shadow-sm" />
+        )}
       </div>
     );
   };
@@ -103,7 +128,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
 
   const handleOpenChat = async (e: React.MouseEvent, item: Item) => {
     e.stopPropagation();
-    
+
     if (!currentUser || currentUser.role === 'guest') {
       onShowAuthModal();
       return;
@@ -127,7 +152,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
         setSelectedItem(null);
         setActiveChatRoom({
           roomId: room.id,
-          itemTitle: item.title
+          itemTitle: item.title,
         });
       } else {
         alert('채팅방을 생성하지 못했습니다. Supabase 연동 상태를 확인해 주세요.');
@@ -172,7 +197,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
             { id: 'tools', label: '🛠 공구/생활' },
             { id: 'electronics', label: '💻 전자제품' },
             { id: 'etc', label: '📦 기타' },
-            { id: 'available', label: '🟢 즉시 대여가능' }
+            { id: 'available', label: '🟢 즉시 대여가능' },
           ] as const
         ).map((chip) => (
           <button
@@ -188,10 +213,10 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
           </button>
         ))}
 
-        {items.filter(i => i.status === 'rented').length > 0 && (
+        {safeItems.filter((i) => i.status === 'rented').length > 0 && (
           <div className="ml-auto hidden md:flex items-center gap-1.5 text-xs font-bold text-[#0f766e] bg-teal-50/60 px-4 py-2 rounded-full border border-teal-200 animate-pulse">
             <Icons.Eye size={12} />
-            <span>{items.filter(i => i.status === 'rented').length}명이 대여 중</span>
+            <span>{safeItems.filter((i) => i.status === 'rented').length}명이 대여 중</span>
           </div>
         )}
       </div>
@@ -201,7 +226,9 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
         {filteredItems.length === 0 ? (
           <div className="col-span-full bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-500">
             <p className="text-xs font-bold">일치하는 공유 자원이 없습니다.</p>
-            <p className="text-[11px] text-slate-400 mt-1">검색어를 수정하거나 다른 카테고리 필터를 선택해보세요.</p>
+            <p className="text-[11px] text-slate-400 mt-1">
+              검색어를 수정하거나 다른 카테고리 필터를 선택해보세요.
+            </p>
           </div>
         ) : (
           filteredItems.map((item) => {
@@ -248,13 +275,19 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
 
                 <p className="text-xs text-slate-500 mb-4 flex items-center gap-1">
                   <Icons.MapPin size={12} className="text-slate-400" />
-                  <span className="truncate">{item.location || item.hub_name} ({item.distance || '거리 확인'})</span>
+                  <span className="truncate">
+                    {item.location || item.hub_name} (
+                    {item.distance || '거리 확인'})
+                  </span>
                 </p>
 
                 <div className="mt-auto flex items-center justify-between border-t border-slate-200 pt-3">
                   <div>
                     <span className="text-sm font-black text-slate-800">
-                      ₩{item.price.toLocaleString()} <span className="text-[10px] font-normal text-slate-400 uppercase">/ 시간</span>
+                      ₩{(item.price || 1000).toLocaleString()}{' '}
+                      <span className="text-[10px] font-normal text-slate-400 uppercase">
+                        / 건
+                      </span>
                     </span>
                   </div>
 
@@ -283,7 +316,10 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
               exit={{ scale: 0.95, opacity: 0 }}
               className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col"
             >
-              <div className="h-44 relative flex items-center justify-center" style={{ backgroundColor: `${selectedItem.color}15` }}>
+              <div
+                className="h-44 relative flex items-center justify-center"
+                style={{ backgroundColor: `${selectedItem.color}15` }}
+              >
                 <div className="absolute inset-0 bg-[radial-gradient(#ffffff_1.5px,transparent_1.5px)] [background-size:16px_16px] opacity-40"></div>
                 <div className="p-4 rounded-full bg-white/40 backdrop-blur-xs shadow-inner">
                   {renderItemThumbnail(selectedItem.category, selectedItem.color)}
@@ -293,7 +329,15 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   onClick={() => setSelectedItem(null)}
                   className="absolute top-4 right-4 p-1.5 rounded-full bg-slate-900/40 text-white hover:bg-slate-900/60 transition cursor-pointer"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                  >
                     <line x1="18" x2="6" y1="6" y2="18" />
                     <line x1="6" x2="18" y1="6" y2="18" />
                   </svg>
@@ -305,12 +349,16 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <span
                       className="px-2 py-0.5 rounded text-[9px] font-bold"
-                      style={{ backgroundColor: `${selectedItem.color}15`, color: selectedItem.color }}
+                      style={{
+                        backgroundColor: `${selectedItem.color}15`,
+                        color: selectedItem.color,
+                      }}
                     >
                       {selectedItem.category}
                     </span>
                     <span className="text-[10px] text-slate-500 font-bold">
-                      📍 {selectedItem.location || selectedItem.hub_name} ({selectedItem.distance || '거리 확인'})
+                      📍 {selectedItem.location || selectedItem.hub_name} (
+                      {selectedItem.distance || '거리 확인'})
                     </span>
                   </div>
 
@@ -328,19 +376,22 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
 
                 <div className="bg-teal-50/20 border border-teal-200 rounded-2xl p-4 space-y-2.5">
                   <div className="flex justify-between items-center text-[11px] text-slate-600">
-                    <span>시간당 대여료</span>
+                    <span>대여료</span>
                     <span className="font-extrabold text-slate-800 text-sm">
-                      {selectedItem.price.toLocaleString()}원
+                      {(selectedItem.price || 1000).toLocaleString()}원
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-[11px] text-slate-600 border-t border-teal-100/40 pt-2">
                     <div className="flex items-center gap-1">
                       <span>파손 예방용 반환 보증금</span>
-                      <span className="inline-flex p-0.5 rounded-full bg-teal-100/60 text-[#0f766e] text-[8px] cursor-help font-bold" title="반납 시 즉시 100% 환불됩니다.">?</span>
+                      <span
+                        className="inline-flex p-0.5 rounded-full bg-teal-100/60 text-[#0f766e] text-[8px] cursor-help font-bold"
+                        title="반납 시 즉시 100% 환불됩니다."
+                      >
+                        ?
+                      </span>
                     </div>
-                    <span className="font-bold text-slate-800">
-                      10,000원
-                    </span>
+                    <span className="font-bold text-slate-800">10,000원</span>
                   </div>
                 </div>
 
@@ -350,13 +401,19 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
 
                 <div className="flex justify-between items-center text-[11px] text-slate-600 -mt-2">
                   <span>남은 수량</span>
-                  <span className={`font-bold ${getRemainingStock(selectedItem) > 0 ? 'text-teal-700' : 'text-rose-600'}`}>
-                    {getRemainingStock(selectedItem)}개 / 총 {(selectedItem as any).quantity ?? 1}개
+                  <span
+                    className={`font-bold ${
+                      getRemainingStock(selectedItem) > 0 ? 'text-teal-700' : 'text-rose-600'
+                    }`}
+                  >
+                    {getRemainingStock(selectedItem)}개 / 총{' '}
+                    {(selectedItem as any).quantity ?? 1}개
                   </span>
                 </div>
 
                 <div className="pt-2 flex flex-col gap-2">
-                  {selectedItem.status !== 'available' || getRemainingStock(selectedItem) <= 0 ? (
+                  {selectedItem.status !== 'available' ||
+                  getRemainingStock(selectedItem) <= 0 ? (
                     <button
                       disabled
                       className="w-full py-3 bg-slate-100 text-slate-400 font-bold rounded-2xl text-xs cursor-not-allowed"
