@@ -8,6 +8,7 @@ import { BrowseFeed } from './components/BrowseFeed';
 import { ConsignmentForm } from './components/ConsignmentForm';
 import { TransactionsSection } from './components/TransactionsSection';
 import { SettingsModal } from './components/SettingsModal';
+import { ChatModal } from './components/ChatModal';
 
 type ActiveTab = 'browse' | 'consignment' | 'transactions';
 
@@ -24,6 +25,12 @@ export default function App() {
   const [isConfiguredSupabase, setIsConfiguredSupabase] = useState(false);
   const [kakaoAppKey, setKakaoAppKey] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+
+  // 💬 글로벌 1:1 대화 모달 상태 관리
+  const [activeChatRoom, setActiveChatRoom] = useState<{
+    roomId: string;
+    itemTitle: string;
+  } | null>(null);
 
   // Initialize: 캐시된 사용자 정보 및 Supabase 설정 확인
   useEffect(() => {
@@ -57,7 +64,6 @@ export default function App() {
     const supabase = getSupabaseClient();
     if (!supabase) return;
 
-    // 1. 페이지 로드 시 기존 세션 체크 (Google OAuth 등 리다이렉트 대응)
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         api.getUser(session.user.id).then(async (profile) => {
@@ -87,7 +93,6 @@ export default function App() {
       }
     });
 
-    // 2. 인증 상태 변경 이벤트 구독
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
         try {
@@ -161,8 +166,8 @@ export default function App() {
   };
 
   const handleLogin = (user: User, silent: boolean = false) => {
-    setIsAuthModalOpen(false); // 🔑 로그인 완료 시 모달 수동 열림 플래그 끄기
-    setCurrentUser(user);       // 🔑 사용자 상태 업데이트 ➔ 모달이 화면에서 즉시 제거됨
+    setIsAuthModalOpen(false);
+    setCurrentUser(user);
     localStorage.setItem('ecolink_cached_user', JSON.stringify(user));
     
     if (!silent) {
@@ -196,6 +201,37 @@ export default function App() {
     setActiveTab('browse');
     setIsAuthModalOpen(true);
     showToast('안전하게 로그아웃되었습니다.');
+  };
+
+  // 💬 사이드바 1:1 대화 메뉴 클릭 핸들러
+  const handleOpenGeneralChat = async () => {
+    if (!currentUser || currentUser.role === 'guest') {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    if (items.length === 0) {
+      showToast('등록된 물품이 없습니다. 물품 등록 후 문의가 가능합니다.', 'info');
+      return;
+    }
+
+    // 등록된 첫번째 물품 기반으로 대화방 연결 시도
+    const targetItem = items[0];
+    const sellerId = (targetItem as any).owner_id || 'seller-dummy';
+
+    try {
+      const room = await (api as any).getOrCreateChatRoom(targetItem.id, currentUser.id, sellerId);
+      if (room) {
+        setActiveChatRoom({
+          roomId: room.id,
+          itemTitle: targetItem.title
+        });
+      } else {
+        showToast('💬 [둘러보기] 탭에서 원하시는 물품의 [문의] 버튼을 눌러보세요!', 'info');
+      }
+    } catch {
+      showToast('💬 [둘러보기] 탭에서 원하시는 물품의 [문의] 버튼을 눌러보세요!', 'info');
+    }
   };
 
   const handleRentItem = async (item: Item) => {
@@ -258,7 +294,6 @@ export default function App() {
   const co2Reduced = items.filter(i => i.status === 'rented').length * 1.8 + (rentals.filter(r => r.status === 'returned').length * 2.4);
   const totalRentCount = rentals.length;
 
-  // 🔑 핵심 수정: currentUser가 전혀 없을 때 또는 수동으로 로그인 버튼을 눌렀을 때만 모달 표시
   const shouldShowAuthGate = !currentUser || isAuthModalOpen;
 
   return (
@@ -338,6 +373,20 @@ export default function App() {
                   {rentals.filter(r => r.status === 'pending_deposit' || r.status === 'active').length}
                 </span>
               )}
+            </button>
+
+            {/* 💬 사이드바 신규 추가: 1:1 대여 문의 채팅 탭 */}
+            <button
+              onClick={handleOpenGeneralChat}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-all cursor-pointer"
+            >
+              <span className="flex items-center gap-3">
+                <Icons.MessageSquare size={16} className="text-teal-600" />
+                1:1 대여 문의
+              </span>
+              <span className="text-[9px] font-bold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded-full">
+                LIVE
+              </span>
             </button>
           </nav>
         </div>
@@ -557,6 +606,15 @@ export default function App() {
             <span className="absolute -top-1 right-2 w-2 h-2 bg-rose-500 rounded-full"></span>
           )}
         </button>
+
+        {/* 💬 모바일 전용 1:1 대화 버튼 */}
+        <button
+          onClick={handleOpenGeneralChat}
+          className="flex flex-col items-center gap-1 cursor-pointer transition text-slate-400 font-medium hover:text-teal-700"
+        >
+          <Icons.MessageSquare size={18} />
+          <span className="text-[10px]">1:1 대화</span>
+        </button>
       </nav>
 
       {/* Toast Notification */}
@@ -577,11 +635,21 @@ export default function App() {
         />
       )}
 
-      {/* Auth Gate Modal (로그인이 되었거나 게스트 선택 완료 시 사라짐) */}
+      {/* Auth Gate Modal */}
       {shouldShowAuthGate && (
         <AuthGate 
           onLogin={handleLogin} 
           onContinueAsGuest={handleContinueAsGuest} 
+        />
+      )}
+
+      {/* 💬 앱 최상단 글로벌 1:1 대화 모달 팝업 */}
+      {activeChatRoom && currentUser && (
+        <ChatModal
+          roomId={activeChatRoom.roomId}
+          itemTitle={activeChatRoom.itemTitle}
+          currentUserId={currentUser.id}
+          onClose={() => setActiveChatRoom(null)}
         />
       )}
 
