@@ -202,8 +202,6 @@ export default function App() {
       return;
     }
 
-    // Quick client-side check for instant feedback (the DB trigger is the real safety net
-    // that prevents overbooking even if two people click at the same time)
     const totalQuantity = (item as any).quantity ?? 1;
     const currentlyRented = rentalCounts[String(item.id)] || 0;
     if (currentlyRented >= totalQuantity) {
@@ -258,12 +256,9 @@ export default function App() {
     return acc;
   }, {} as Record<string, string>);
 
-  // 실제 집계 데이터만 사용 (가짜 padding 숫자 제거)
   const co2Reduced = items.filter(i => i.status === 'rented').length * 1.8 + (rentals.filter(r => r.status === 'returned').length * 2.4);
   const totalRentCount = rentals.length;
-  const activeRenterCount = rentals.filter(r => r.status === 'active').length;
 
-  // ⚡ 핵심 수정 분기: 구글 로그인이 완료되어 유저 역할이 'user'가 되면 로그인 화면 수막을 조건 없이 강제 철거합니다.
   const shouldShowAuthGate = !currentUser || (currentUser.role !== 'user' && currentUser.role !== 'admin' && isAuthModalOpen);
 
   return (
@@ -272,12 +267,9 @@ export default function App() {
       {/* 1. Left Fixed Sidebar Layout (Desktop) */}
       <aside className="hidden lg:flex w-64 bg-white border-r border-slate-200 flex-col p-6 h-full justify-between shrink-0">
         <div className="space-y-8">
+          {/* 🌿 브랜드 상단 헤더 로고 영역 */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#0f766e] rounded-xl flex items-center justify-center shadow-lg shadow-teal-900/20">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-              </svg>
-            </div>
+            <Icons.EcolinkLogo size={38} className="shrink-0" />
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="text-lg font-bold tracking-tight text-slate-900">에코링크</span>
@@ -381,12 +373,9 @@ export default function App() {
       {/* 2. Main Work Stream Content Panel */}
       <main className="flex-1 flex flex-col h-full overflow-hidden pb-16 lg:pb-0">
         <header className="h-16 bg-white border-b border-slate-200 px-6 md:px-8 flex items-center justify-between shrink-0">
+          {/* 🌿 모바일 헤더 로고 영역 */}
           <div className="flex items-center gap-2 lg:hidden">
-            <div className="w-8 h-8 bg-[#0f766e] rounded-lg flex items-center justify-center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-              </svg>
-            </div>
+            <Icons.EcolinkLogo size={28} />
             <span className="text-sm font-black text-slate-900">에코링크</span>
           </div>
 
@@ -576,7 +565,7 @@ export default function App() {
         />
       )}
 
-      {/* 🔐 수정된 차단벽: 정상 회원이 연동되면 무조건 문을 열어줍니다. */}
+      {/* 🔐 차단벽: 게스트가 아니고 회원이 연동되면 화면을 표시합니다. */}
       {shouldShowAuthGate && (
         <AuthGate 
           onLogin={handleLogin} 
