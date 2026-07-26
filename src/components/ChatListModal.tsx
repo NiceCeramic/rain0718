@@ -47,6 +47,27 @@ export const ChatListModal: React.FC<ChatListModalProps> = ({
     return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
   };
 
+  // 💡 카테고리별 아이콘/로고 동적 렌더링 함수 추가
+  const renderCategoryIcon = (category: string, color: string) => {
+    const isUmbrella = category === 'umbrella' || category === '우산';
+    const isSunshade = category === 'sunshade' || category === '양산';
+    const isBattery = category === 'battery' || category === '보조배터리';
+
+    return (
+      <div
+        className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 relative overflow-hidden"
+        style={{ backgroundColor: `${color}20` }}
+      >
+        {isUmbrella && <Icons.Umbrella size={22} style={{ color }} />}
+        {isSunshade && <Icons.Sun size={22} style={{ color }} />}
+        {isBattery && <Icons.Battery size={22} style={{ color }} />}
+        {!isUmbrella && !isSunshade && !isBattery && (
+          <Icons.Store size={22} style={{ color }} />
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
       <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col h-[580px]">
@@ -96,13 +117,8 @@ export const ChatListModal: React.FC<ChatListModalProps> = ({
                 }}
                 className="p-4 hover:bg-slate-50 transition cursor-pointer flex items-center gap-3"
               >
-                {/* 물품 컬러 썸네일 아이콘 */}
-                <div
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 relative overflow-hidden"
-                  style={{ backgroundColor: `${room.item_color}20` }}
-                >
-                  <Icons.Store size={22} style={{ color: room.item_color }} />
-                </div>
+                {/* 💡 변경된 영역: 카테고리별 동적 로고/아이콘 */}
+                {renderCategoryIcon(room.item_category, room.item_color)}
 
                 {/* 대화 정보 (상대방 이름 + 물품명 + 마지막 메시지) */}
                 <div className="flex-1 min-w-0">
