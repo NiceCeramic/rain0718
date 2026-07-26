@@ -7,6 +7,43 @@ interface IconProps extends React.SVGProps<SVGSVGElement> {
 }
 
 export const Icons = {
+  // 🌿 에코링크 인피니티 나뭇잎 로고 (추가됨)
+  EcolinkLogo: ({ size = 32, ...props }: IconProps) => (
+    <svg 
+      width={size} 
+      height={size} 
+      viewBox="0 0 200 100" 
+      fill="none" 
+      xmlns="http://www.w3.org/2000/svg"
+      {...props}
+    >
+      <defs>
+        <linearGradient id="ecolink-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#10B981" />
+          <stop offset="50%" stopColor="#22C55E" />
+          <stop offset="100%" stopColor="#3B82F6" />
+        </linearGradient>
+      </defs>
+      {/* 인피니티 루프 */}
+      <path 
+        d="M 50 50 C 20 20, 20 80, 50 50 C 80 20, 120 20, 150 50 C 180 80, 180 20, 150 50 C 120 80, 80 80, 50 50 Z" 
+        stroke="url(#ecolink-grad)" 
+        strokeWidth="18" 
+        strokeLinecap="round" 
+        strokeLinejoin="round"
+      />
+      {/* 친환경 나뭇잎 디테일 */}
+      <path 
+        d="M 45 35 C 45 25, 55 25, 55 35 C 55 45, 45 45, 45 35 Z" 
+        fill="#10B981" 
+      />
+      <path 
+        d="M 95 20 C 95 12, 102 12, 102 20 C 102 28, 95 28, 95 20 Z" 
+        fill="#22C55E" 
+      />
+    </svg>
+  ),
+
   Store: ({ size = 20, ...props }: IconProps) => (
     <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" />
