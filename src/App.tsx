@@ -9,6 +9,7 @@ import { ConsignmentForm } from './components/ConsignmentForm';
 import { TransactionsSection } from './components/TransactionsSection';
 import { SettingsModal } from './components/SettingsModal';
 import { ChatModal } from './components/ChatModal';
+import { ChatListModal } from './components/ChatListModal';
 
 type ActiveTab = 'browse' | 'consignment' | 'transactions';
 
@@ -26,7 +27,10 @@ export default function App() {
   const [kakaoAppKey, setKakaoAppKey] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
 
-  // 💬 글로벌 1:1 대화 모달 상태 관리
+  // 💬 채팅 목록 모달 열림 상태 관리
+  const [isChatListOpen, setIsChatListOpen] = useState(false);
+
+  // 💬 글로벌 개별 1:1 대화 모달 상태 관리
   const [activeChatRoom, setActiveChatRoom] = useState<{
     roomId: string;
     itemTitle: string;
@@ -203,35 +207,13 @@ export default function App() {
     showToast('안전하게 로그아웃되었습니다.');
   };
 
-  // 💬 사이드바 1:1 대화 메뉴 클릭 핸들러
-  const handleOpenGeneralChat = async () => {
+  // 💬 사이드바 / 하단 바 1:1 대화 메뉴 클릭 핸들러 (당근마켓 스타일 전체 채팅 목록 열기)
+  const handleOpenGeneralChat = () => {
     if (!currentUser || currentUser.role === 'guest') {
       setIsAuthModalOpen(true);
       return;
     }
-
-    if (items.length === 0) {
-      showToast('등록된 물품이 없습니다. 물품 등록 후 문의가 가능합니다.', 'info');
-      return;
-    }
-
-    // 등록된 첫번째 물품 기반으로 대화방 연결 시도
-    const targetItem = items[0];
-    const sellerId = (targetItem as any).owner_id || 'seller-dummy';
-
-    try {
-      const room = await (api as any).getOrCreateChatRoom(targetItem.id, currentUser.id, sellerId);
-      if (room) {
-        setActiveChatRoom({
-          roomId: room.id,
-          itemTitle: targetItem.title
-        });
-      } else {
-        showToast('💬 [둘러보기] 탭에서 원하시는 물품의 [문의] 버튼을 눌러보세요!', 'info');
-      }
-    } catch {
-      showToast('💬 [둘러보기] 탭에서 원하시는 물품의 [문의] 버튼을 눌러보세요!', 'info');
-    }
+    setIsChatListOpen(true);
   };
 
   const handleRentItem = async (item: Item) => {
@@ -375,7 +357,7 @@ export default function App() {
               )}
             </button>
 
-            {/* 💬 사이드바 신규 추가: 1:1 대여 문의 채팅 탭 */}
+            {/* 💬 사이드바 1:1 대여 문의 채팅 목록 탭 */}
             <button
               onClick={handleOpenGeneralChat}
               className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-all cursor-pointer"
@@ -643,7 +625,19 @@ export default function App() {
         />
       )}
 
-      {/* 💬 앱 최상단 글로벌 1:1 대화 모달 팝업 */}
+      {/* 💬 1. 당근마켓 스타일 전체 1:1 대여 채팅 목록 모달 */}
+      {isChatListOpen && currentUser && (
+        <ChatListModal
+          currentUserId={currentUser.id}
+          onClose={() => setIsChatListOpen(false)}
+          onSelectRoom={(room) => {
+            setIsChatListOpen(false);
+            setActiveChatRoom({ roomId: room.id, itemTitle: room.itemTitle });
+          }}
+        />
+      )}
+
+      {/* 💬 2. 개별 실시간 1:1 대화 모달 팝업 */}
       {activeChatRoom && currentUser && (
         <ChatModal
           roomId={activeChatRoom.roomId}
