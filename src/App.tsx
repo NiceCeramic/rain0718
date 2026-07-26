@@ -25,7 +25,7 @@ export default function App() {
   const [kakaoAppKey, setKakaoAppKey] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
 
-  // Initialize: .env 환경변수 및 localStorage 설정 확인
+  // Initialize: 캐시된 사용자 정보 및 Supabase 설정 확인
   useEffect(() => {
     const cachedUser = localStorage.getItem('ecolink_cached_user');
     if (cachedUser) {
@@ -50,13 +50,14 @@ export default function App() {
     setKakaoAppKey(getKakaoAppKey());
   }, []);
 
-  // Supabase 세션 리스너
+  // Supabase 세션 감지 및 자동 로그인 로직
   useEffect(() => {
     if (!isConfiguredSupabase) return;
 
     const supabase = getSupabaseClient();
     if (!supabase) return;
 
+    // 1. 페이지 로드 시 기존 세션 체크 (Google OAuth 등 리다이렉트 대응)
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         api.getUser(session.user.id).then(async (profile) => {
@@ -74,31 +75,25 @@ export default function App() {
             handleLogin(defaultUser, false);
           }
         }).catch((err) => {
-          console.error("Profile fetch failed:", err);
-          setIsAuthModalOpen(false);
+          console.warn("Profile fetch error, fallback to session user:", err);
+          const fallbackUser: User = {
+            id: session.user.id,
+            name: session.user.email?.split('@')[0] || '에코멤버',
+            role: 'user',
+            created_at: new Date().toISOString()
+          };
+          handleLogin(fallbackUser, true);
         });
       }
     });
 
+    // 2. 인증 상태 변경 이벤트 구독
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
-        const cachedUserStr = localStorage.getItem('ecolink_cached_user');
-        let alreadyLoggedIn = false;
-        if (cachedUserStr) {
-          try {
-            const cached = JSON.parse(cachedUserStr);
-            if (cached && cached.id === session.user.id && cached.role === 'user') {
-              alreadyLoggedIn = true;
-            }
-          } catch {
-            // ignore
-          }
-        }
-
         try {
           const profile = await api.getUser(session.user.id);
           if (profile) {
-            handleLogin(profile, alreadyLoggedIn);
+            handleLogin(profile, false);
           } else {
             const defaultName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '에코멤버';
             const newUser: User = {
@@ -108,11 +103,17 @@ export default function App() {
               created_at: new Date().toISOString()
             };
             await api.upsertUser(newUser);
-            handleLogin(newUser, alreadyLoggedIn);
+            handleLogin(newUser, false);
           }
         } catch (err) {
-          console.error("Auth change handling failed:", err);
-          setIsAuthModalOpen(false);
+          console.warn("Auth change user handle fallback:", err);
+          const newUser: User = {
+            id: session.user.id,
+            name: session.user.email?.split('@')[0] || '에코멤버',
+            role: 'user',
+            created_at: new Date().toISOString()
+          };
+          handleLogin(newUser, false);
         }
       } else if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
@@ -160,8 +161,8 @@ export default function App() {
   };
 
   const handleLogin = (user: User, silent: boolean = false) => {
-    setIsAuthModalOpen(false);
-    setCurrentUser(user);
+    setIsAuthModalOpen(false); // 🔑 로그인 완료 시 모달 수동 열림 플래그 끄기
+    setCurrentUser(user);       // 🔑 사용자 상태 업데이트 ➔ 모달이 화면에서 즉시 제거됨
     localStorage.setItem('ecolink_cached_user', JSON.stringify(user));
     
     if (!silent) {
@@ -257,7 +258,8 @@ export default function App() {
   const co2Reduced = items.filter(i => i.status === 'rented').length * 1.8 + (rentals.filter(r => r.status === 'returned').length * 2.4);
   const totalRentCount = rentals.length;
 
-  const shouldShowAuthGate = !currentUser || (currentUser.role !== 'user' && currentUser.role !== 'admin' && isAuthModalOpen);
+  // 🔑 핵심 수정: currentUser가 전혀 없을 때 또는 수동으로 로그인 버튼을 눌렀을 때만 모달 표시
+  const shouldShowAuthGate = !currentUser || isAuthModalOpen;
 
   return (
     <div className="flex h-screen w-full bg-[#F8FAFC] text-slate-800 font-sans overflow-hidden">
@@ -575,7 +577,7 @@ export default function App() {
         />
       )}
 
-      {/* Auth Gate Modal */}
+      {/* Auth Gate Modal (로그인이 되었거나 게스트 선택 완료 시 사라짐) */}
       {shouldShowAuthGate && (
         <AuthGate 
           onLogin={handleLogin} 
