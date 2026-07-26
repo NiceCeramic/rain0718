@@ -22,10 +22,34 @@ export const MapSection: React.FC<MapSectionProps> = ({
   selectedHubId,
   onSelectHub,
 }) => {
-  const displayStations = Array.isArray(stations) && stations.length > 0 ? stations : DEFAULT_STATIONS;
+  const rawStations = Array.isArray(stations) && stations.length > 0 ? stations : DEFAULT_STATIONS;
   const safeItems = Array.isArray(items) ? items : [];
 
-  const selectedStation = displayStations.find((s) => String(s.id) === selectedHubId);
+  // 🔄 1. 거점 이름(name) 기준으로 중복 항목 하나로 통합하기 (Trim 포함)
+  const uniqueStationsMap = new Map<string, Station>();
+  
+  rawStations.forEach((station) => {
+    const cleanName = (station.name || '').trim();
+    if (!cleanName) return;
+
+    if (!uniqueStationsMap.has(cleanName)) {
+      uniqueStationsMap.set(cleanName, { ...station, name: cleanName });
+    } else {
+      // 기존 저장된 거점에 좌표가 없는데 중복 거점에 좌표가 있다면 보완
+      const existing = uniqueStationsMap.get(cleanName)!;
+      if (!existing.latitude && station.latitude) {
+        existing.latitude = station.latitude;
+        existing.longitude = station.longitude;
+      }
+    }
+  });
+
+  const displayStations = Array.from(uniqueStationsMap.values());
+
+  // 선택된 거점 객체 찾기 (이름 매칭 포함)
+  const selectedStation = displayStations.find(
+    (s) => String(s.id) === selectedHubId || s.name === selectedHubId
+  );
 
   const currentLat = selectedStation?.latitude || displayStations[0]?.latitude || 37.200;
   const currentLng = selectedStation?.longitude || displayStations[0]?.longitude || 127.080;
@@ -84,7 +108,7 @@ export const MapSection: React.FC<MapSectionProps> = ({
         </div>
       </div>
 
-      {/* 3. 📍 거점 선택 버튼 칩 영역 (인라인 스타일 적용으로 100% 노출 보장) */}
+      {/* 3. 📍 통합된 거점 목록 버튼 칩 영역 */}
       <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-bold text-slate-800 block">
@@ -93,18 +117,23 @@ export const MapSection: React.FC<MapSectionProps> = ({
           <span className="text-[10px] text-teal-600 font-bold">버튼 클릭 시 지도 이동 및 필터링</span>
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 scrollbar-none" style={{ display: 'flex', flexWrap: 'nowrap' }}>
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 scrollbar-none">
           {displayStations.map((station) => {
-            const isSelected = selectedHubId === String(station.id);
+            const isSelected =
+              selectedHubId === String(station.id) || selectedHubId === station.name;
+
+            // 🔄 해당 거점명과 일치하는 모든 물품 개수 합산
             const hubItems = safeItems.filter(
-              (i) => i.location === station.name || (i as any).hub_name === station.name
+              (i) =>
+                (i.location || '').trim() === station.name ||
+                ((i as any).hub_name || '').trim() === station.name
             );
 
             return (
               <button
-                key={station.id}
+                key={station.id || station.name}
                 type="button"
-                onClick={() => onSelectHub(isSelected ? null : String(station.id))}
+                onClick={() => onSelectHub(isSelected ? null : station.name)}
                 className={`px-4 py-2.5 rounded-2xl border text-xs font-bold transition shrink-0 flex items-center gap-2 cursor-pointer shadow-xs ${
                   isSelected
                     ? 'bg-slate-900 text-white border-slate-900 ring-2 ring-teal-500/40 shadow-md'
