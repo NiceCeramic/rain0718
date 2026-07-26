@@ -27,7 +27,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   const [price, setPrice] = useState('1000');
   const [selectedStationName, setSelectedStationName] = useState<string>(availableStations[0].name);
 
-  // 📍 신규 거점 정보 (위치명, 위도, 경도)
+  // 📍 신규 거점 정보 (초기값: 기본 좌표)
   const [customLocation, setCustomLocation] = useState('');
   const [latitude, setLatitude] = useState('37.200');
   const [longitude, setLongitude] = useState('127.080');
@@ -35,6 +35,22 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   const [quantity, setQuantity] = useState('1');
   const [color, setColor] = useState('#0f766e');
   const [description, setDescription] = useState('');
+
+  // 🛰️ GPS 기기 현재 위치 자동 조회 (최초 렌더링 시 실행)
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLatitude(position.coords.latitude.toFixed(5));
+          setLongitude(position.coords.longitude.toFixed(5));
+        },
+        (error) => {
+          console.warn('GPS 권한 미허용 또는 오류:', error.message);
+        },
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    }
+  }, []);
 
   useEffect(() => {
     if (availableStations.length > 0 && (!selectedStationName || selectedStationName === '지정 거점')) {
@@ -49,13 +65,12 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 🗺️ 지도 클릭 시 위도/경도 자동 계산 및 마커 찍기
+  // 🗺️ 지도 클릭 시 위도/경도 자동 계산 및 마커 이동
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
 
-    // 미니맵 영역 상대 좌표 기반 위도/경도 변환 공식
     const baseLat = parseFloat(latitude) || 37.200;
     const baseLng = parseFloat(longitude) || 127.080;
 
@@ -308,12 +323,12 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
               className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 text-[11px]"
             />
 
-            {/* 🗺️ 신규 거점 지정 시 지도 클릭으로 좌표 찍기 */}
+            {/* 🗺️ 신규 거점 지정 시 지도 클릭으로 좌표 찍기 (GPS 자동 위치 바인딩) */}
             {customLocation.trim() && (
               <div className="space-y-2 pt-2 border-t border-slate-100">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-teal-800">
-                    👇 지도를 클릭하면 클릭한 위치의 좌표가 자동 입력됩니다
+                    📡 현재 GPS 위치 기준 지도 (클릭 시 위치 변경)
                   </span>
                 </div>
 
