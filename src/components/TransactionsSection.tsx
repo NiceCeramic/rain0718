@@ -20,7 +20,6 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
 }) => {
   const [loadingId, setLoadingId] = useState<string | number | null>(null);
 
-  // Guard: Guest check
   if (!currentUser || currentUser.role === 'guest') {
     return (
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 text-center">
@@ -41,31 +40,38 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
     );
   }
 
+  // ⚡ 입금 확인 버튼 처리 (상태를 active로 변경)
   const handleApproveDeposit = async (rentalId: string | number, itemId: string | number) => {
     setLoadingId(rentalId);
     try {
-      // 1. Update rental status to active
+      // 1. 대여 상태를 'active'(이용중) 및 보증금 'holding'으로 업데이트
       await api.updateRentalStatus(rentalId, 'active', 'holding');
-      // 2. Update item status to rented
-      await api.updateItemStatus(itemId, 'rented');
-      onRefresh();
+      // 2. 해당 물품 상태를 'rented'로 업데이트
+      if (itemId) {
+        await api.updateItemStatus(itemId, 'rented');
+      }
+      // 3. 부모 컴포넌트 데이터 새로고침
+      await onRefresh();
     } catch (err) {
-      console.error(err);
+      console.error('Failed to approve deposit:', err);
+      alert('입금 확인 처리 중 오류가 발생했습니다.');
     } finally {
       setLoadingId(null);
     }
   };
 
+  // 📥 반납하기 버튼 처리 (상태를 returned로 변경)
   const handleReturnItem = async (rentalId: string | number, itemId: string | number) => {
     setLoadingId(rentalId);
     try {
-      // 1. Update rental status to returned and refund deposit
       await api.updateRentalStatus(rentalId, 'returned', 'refunded');
-      // 2. Update item status to available
-      await api.updateItemStatus(itemId, 'available');
-      onRefresh();
+      if (itemId) {
+        await api.updateItemStatus(itemId, 'available');
+      }
+      await onRefresh();
     } catch (err) {
-      console.error(err);
+      console.error('Failed to return item:', err);
+      alert('반납 처리 중 오류가 발생했습니다.');
     } finally {
       setLoadingId(null);
     }
@@ -76,7 +82,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
   };
 
   const formatDate = (dateStr?: string) => {
-    if (!dateStr) return '일시 정보 없음';
+    if (!dateStr) return '신청 일시 기록 중';
     const date = new Date(dateStr);
     if (isNaN(date.getTime()) || date.getFullYear() < 2000) {
       return '방금 전';
@@ -92,7 +98,6 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Intro Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-bold text-slate-900">나의 대여 및 위탁 거래 대여증</h2>
@@ -112,13 +117,15 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
         <div className="grid grid-cols-1 gap-4">
           {rentals.map((rental) => {
             const item = getAssociatedItem(rental.item_id);
-            if (!item) return null;
+            const itemId = item?.id || rental.item_id;
 
             const isPending = rental.status === 'pending_deposit';
             const isActive = rental.status === 'active';
             const isReturned = rental.status === 'returned';
 
-            const totalTransferAmount = item.price + rental.deposit;
+            const itemPrice = item?.price || rental.price_paid || 1000;
+            const depositPrice = rental.deposit || 10000;
+            const totalTransferAmount = itemPrice + depositPrice;
 
             return (
               <div 
@@ -132,13 +139,15 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                   <div className="flex items-center gap-2">
                     <span 
                       className="w-3 h-3 rounded-full inline-block"
-                      style={{ backgroundColor: item.color }}
+                      style={{ backgroundColor: item?.color || '#0f766e' }}
                     ></span>
-                    <span className="text-[10px] font-mono text-slate-400 font-bold">대여증 #{String(rental.id).split('-')[1] || rental.id}</span>
+                    <span className="text-[10px] font-mono text-slate-400 font-bold">
+                      대여증 #{String(rental.id).split('-')[1] || rental.id}
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {/* Status Badge */}
+                    {/* Status Badges */}
                     {isPending && (
                       <span className="px-2.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-100 text-[10px] font-bold rounded-md flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
@@ -157,7 +166,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                       </span>
                     )}
 
-                    {/* Deposit Badge */}
+                    {/* Deposit Badges */}
                     {rental.deposit_status === 'holding' && (
                       <span className="px-2 py-0.5 bg-sky-50 text-sky-800 text-[9px] font-bold rounded-sm border border-sky-100">
                         보증금 보관 중
@@ -175,11 +184,11 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                 <div className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
                   <div className="space-y-1">
                     <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[9px] font-bold rounded">
-                      {item.category}
+                      {item?.category || '공유 자원'}
                     </span>
-                    <h3 className="text-sm font-bold text-slate-900 mt-1">{item.title}</h3>
+                    <h3 className="text-sm font-bold text-slate-900 mt-1">{item?.title || '등록된 대여 자원'}</h3>
                     <div className="text-slate-500 text-[11px] space-y-0.5">
-                      <p>📍 대여/반납 장소: <strong className="text-slate-700">{item.location}</strong></p>
+                      <p>📍 대여/반납 장소: <strong className="text-slate-700">{item?.location || item?.hub_name || '지정 거점'}</strong></p>
                       <p>⏰ 신청 일시: {formatDate(rental.rented_at)}</p>
                       {rental.returned_at && (
                         <p className="text-teal-700 font-bold">🎉 반납 완료 일시: {formatDate(rental.returned_at)}</p>
@@ -191,11 +200,11 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 min-w-[180px] space-y-1 text-slate-600">
                     <div className="flex justify-between text-[11px]">
                       <span>시간당 대여 가격</span>
-                      <span className="font-bold text-slate-800">{item.price.toLocaleString()}원</span>
+                      <span className="font-bold text-slate-800">{itemPrice.toLocaleString()}원</span>
                     </div>
                     <div className="flex justify-between text-[11px]">
                       <span>반환형 보증금</span>
-                      <span className="font-bold text-slate-800">{rental.deposit.toLocaleString()}원</span>
+                      <span className="font-bold text-slate-800">{depositPrice.toLocaleString()}원</span>
                     </div>
                     <div className="border-t border-slate-200/60 my-1 pt-1 flex justify-between font-bold text-teal-900 text-xs">
                       <span>총 금액</span>
@@ -204,7 +213,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                   </div>
                 </div>
 
-                {/* Pending deposit action or other states */}
+                {/* Status-specific Action Cards */}
                 {isPending && (
                   <div className="px-5 py-4 bg-amber-50/30 border-t border-amber-200 text-xs">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-amber-200">
@@ -219,7 +228,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
 
                       <div className="flex flex-wrap gap-2">
                         <button
-                          onClick={() => handleApproveDeposit(rental.id, item.id)}
+                          onClick={() => handleApproveDeposit(rental.id, itemId)}
                           disabled={loadingId === rental.id}
                           className="px-4 py-2.5 bg-[#0f766e] hover:bg-[#0d9488] text-white font-bold rounded-xl text-[11px] transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
@@ -244,11 +253,11 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                   <div className="px-5 py-4 bg-teal-50/20 border-t border-slate-200 text-xs flex justify-between items-center flex-wrap gap-2">
                     <div className="flex items-center gap-2 text-slate-600">
                       <span className="w-2 h-2 rounded-full bg-teal-500 animate-ping"></span>
-                      <p className="text-[11px] font-semibold">입금 확인 완료! 자원을 사용 중입니다. 이용을 마치신 후 거점 수거함에 반환해주세요.</p>
+                      <p className="text-[11px] font-semibold">입금 확인 완료! 자원을 대여 중입니다. 이용을 마치신 후 반납해 주세요.</p>
                     </div>
 
                     <button
-                      onClick={() => handleReturnItem(rental.id, item.id)}
+                      onClick={() => handleReturnItem(rental.id, itemId)}
                       disabled={loadingId === rental.id}
                       className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-[11px] transition shadow-xs cursor-pointer disabled:opacity-50"
                     >
@@ -260,7 +269,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                 {isReturned && (
                   <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex items-center gap-1.5">
                     <Icons.Check size={14} className="text-[#0f766e] font-bold" />
-                    반납 완료되어 예방용 파손 보증금 <strong>{rental.deposit.toLocaleString()}원</strong>이 정상 환불 송금되었습니다. 깨끗한 동네 자원 공유를 실천해주셔서 감사합니다!
+                    반납 완료되어 예방용 파손 보증금 <strong>{depositPrice.toLocaleString()}원</strong>이 정상 환불 송금되었습니다. 깨끗한 동네 자원 공유를 실천해주셔서 감사합니다!
                   </div>
                 )}
               </div>
