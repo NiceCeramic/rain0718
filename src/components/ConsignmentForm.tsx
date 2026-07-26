@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, ItemCategory, Item } from '../types';
-import { api } from '../supabaseClient';
+import { api, Station } from '../supabaseClient';
 import { Icons } from './Icons';
 
 interface ConsignmentFormProps {
@@ -17,12 +17,25 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   const [category, setCategory] = useState<ItemCategory>('우산');
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState(1000);
+  const [stations, setStations] = useState<Station[]>([]);
+  const [selectedStationId, setSelectedStationId] = useState<string>('');
   const [hubName, setHubName] = useState('서울대 시흥캠퍼스 정문');
   const [quantity, setQuantity] = useState(1);
   const [color, setColor] = useState('#0f766e');
   const [description, setDescription] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 거점 목록 불러오기
+  useEffect(() => {
+    api.getStations().then((fetched) => {
+      setStations(fetched);
+      if (fetched.length > 0) {
+        setSelectedStationId(String(fetched[0].id));
+        setHubName(fetched[0].name);
+      }
+    });
+  }, []);
 
   // 📷 카메라 촬영 / 사진 선택 핸들러
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -33,6 +46,17 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleStationSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setSelectedStationId(val);
+    if (val === 'custom') {
+      setHubName('');
+    } else {
+      const found = stations.find((s) => String(s.id) === val);
+      if (found) setHubName(found.name);
     }
   };
 
@@ -49,9 +73,20 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       return;
     }
 
+    if (!hubName.trim()) {
+      alert('위탁 거점 이름을 입력해 주세요.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
+      // 1. 만약 신규 거점인 경우 stations 테이블에도 추가 시도
+      if (selectedStationId === 'custom' || !stations.some((s) => s.name === hubName.trim())) {
+        await api.insertStation(hubName.trim(), 37.37, 126.80); // 기본 위치 좌표 매핑
+      }
+
+      // 2. items 테이블에 데이터 등록
       const newItemPayload: Omit<Item, 'id' | 'created_at'> = {
         title: title.trim(),
         category,
@@ -68,11 +103,11 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       } as any;
 
       await api.insertItem(newItemPayload);
-      alert('공유 거점에 물품 위탁 등록이 완료되었습니다!');
+      alert('🚀 공유 거점에 물품 위탁 등록이 성공적으로 완료되었습니다!');
       onSuccess();
     } catch (err) {
       console.error('위탁 등록 실패:', err);
-      alert('등록 중 오류가 발생했습니다.');
+      alert('등록 중 오류가 발생했습니다. 개발자 도구(F12) 콘솔을 확인해 주세요.');
     } finally {
       setIsSubmitting(false);
     }
@@ -184,16 +219,27 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
         {/* 위탁 거점 및 대여 가능 수량 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 block">위탁 거점 이름</label>
+            <label className="font-bold text-slate-700 block">위탁 거점 선택 / 입력</label>
+            <select
+              value={selectedStationId}
+              onChange={handleStationSelect}
+              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 mb-1"
+            >
+              {stations.map((s) => (
+                <option key={s.id} value={String(s.id)}>
+                  📍 {s.name}
+                </option>
+              ))}
+              <option value="custom">✏️ 직접 새 거점 입력하기</option>
+            </select>
+
             <input
               type="text"
               value={hubName}
               onChange={(e) => setHubName(e.target.value)}
+              placeholder="위탁할 거점 명칭을 입력하세요"
               className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500"
             />
-            <p className="text-[10px] text-teal-600 font-medium">
-              ✅ 기존에 등록된 거점입니다. 저장된 좌표를 그대로 사용합니다.
-            </p>
           </div>
 
           <div className="space-y-1.5">
@@ -233,7 +279,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
             rows={3}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="상세한 제품 상태나 대여 시 유의사항을 입력해주세요. (예: 손잡이가 실리콘 재질이라 그립감이 좋습니다.)"
+            placeholder="상세한 제품 상태나 대여 시 유의사항을 입력해주세요."
             className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 resize-none"
           />
         </div>
