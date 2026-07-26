@@ -19,13 +19,22 @@ const COLOR_PRESETS = [
   { name: '포레스트 그린', hex: '#16a34a' }
 ];
 
+const CATEGORY_OPTIONS: { id: ItemCategory; label: string; icon: string }[] = [
+  { id: 'umbrella', label: '우산', icon: '☔' },
+  { id: 'sunshade', label: '양산', icon: '⛱' },
+  { id: 'battery', label: '보조배터리', icon: '🔋' },
+  { id: 'tools', label: '공구/생활', icon: '🛠' },
+  { id: 'electronics', label: '전자제품', icon: '💻' },
+  { id: 'etc', label: '기타 물품', icon: '📦' },
+];
+
 export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({ 
   currentUser, 
   onSuccess, 
   onShowAuthModal 
 }) => {
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState<ItemCategory>('우산');
+  const [category, setCategory] = useState<ItemCategory>('umbrella');
 
   const [stations, setStations] = useState<Station[]>([]);
   const [isLoadingStations, setIsLoadingStations] = useState(true);
@@ -41,7 +50,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Load existing consignment hubs (public.stations) so we can suggest them / detect duplicates
+  // Load existing consignment hubs (public.stations)
   useEffect(() => {
     let isMounted = true;
     (async () => {
@@ -56,8 +65,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
     };
   }, []);
 
-  // Whenever the typed name matches an existing station exactly, reuse its saved coordinates
-  // and skip asking the user to drop a new pin.
+  // Whenever typed name matches existing station, reuse its coords
   useEffect(() => {
     const trimmed = hubNameInput.trim().toLowerCase();
     if (!trimmed) {
@@ -93,7 +101,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       return;
     }
 
-    // If it's a brand-new name (not an existing station), we require a pin on the map
+    // Require map pin for brand-new stations
     if (!matchedExistingStation && !pickedCoords) {
       setMessage({ type: 'error', text: '새로운 거점이에요. 지도에서 정확한 위치를 마커로 지정한 뒤 "이 위치로 확정"을 눌러주세요.' });
       setIsPickerOpen(true);
@@ -127,19 +135,16 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
         owner_id: currentUser.id,
         title: title.trim(),
         category,
+        hub_name: targetStation.name,
         location: targetStation.name,
-        distance: '내 위치 기준 확인 필요',
         price: Number(price),
         quantity: Math.max(1, Number(quantity)),
         color,
         status: 'available' as const,
         description: description.trim() || `${category} 위탁 보관 물품입니다.`,
-        rating: 5.0,
-        reviews: 0,
-        viewers: 0
       };
 
-      await api.insertItem(newItem);
+      await api.insertItem(newItem as any);
       
       // Success feedback
       setMessage({ type: 'success', text: '🌱 성공적으로 위탁 대여 제품이 등록되었습니다! 둘러보기 탭에서 즉시 확인해보세요.' });
@@ -163,15 +168,10 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
+    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 max-w-4xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
-        <div className="p-2 rounded-xl bg-teal-50 text-[#0f766e]">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M12 22v-5" />
-            <path d="M9 17h6" />
-            <path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" />
-            <path d="M12 2a15.3 15.3 0 0 1 4 10H8a15.3 15.3 0 0 1 4-10Z" />
-          </svg>
+        <div className="p-2.5 rounded-xl bg-teal-50 text-[#0f766e]">
+          <Icons.Plus size={20} />
         </div>
         <div>
           <h2 className="text-sm font-bold text-slate-900">공유 자원 위탁 등록 (Consignment)</h2>
@@ -180,44 +180,55 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5 text-xs">
-        {/* Category & Name */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-slate-700 font-bold mb-1.5">카테고리</label>
-            <div className="flex gap-2">
-              {(['우산', '양산', '보조배터리'] as const).map((cat) => (
-                <button
-                  type="button"
-                  key={cat}
-                  onClick={() => setCategory(cat)}
-                  className={`flex-1 py-2.5 rounded-xl font-bold border transition cursor-pointer ${
-                    category === cat
-                      ? 'bg-teal-50 border-teal-500 text-teal-800 shadow-xs'
-                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  {cat === '우산' && '☔ '}
-                  {cat === '양산' && '⛱ '}
-                  {cat === '보조배터리' && '🔋 '}
-                  {cat}
-                </button>
-              ))}
-            </div>
+        {/* Category Selection */}
+        <div>
+          <label className="block text-slate-700 font-bold mb-1.5">카테고리</label>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+            {CATEGORY_OPTIONS.map((cat) => (
+              <button
+                type="button"
+                key={cat.id}
+                onClick={() => setCategory(cat.id)}
+                className={`py-2.5 px-3 rounded-xl font-bold border transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  category === cat.id
+                    ? 'bg-teal-50 border-teal-500 text-teal-800 shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <span>{cat.icon}</span>
+                <span>{cat.label}</span>
+              </button>
+            ))}
           </div>
+        </div>
 
+        {/* Name & Price */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-slate-700 font-bold mb-1.5">제품명 (모델명)</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="예: 초경량 3단 미니 우산"
+              placeholder="예: 초경량 3단 미니 우산, 충전식 전동드라이버"
               className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-500 hover:border-slate-300 transition"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-bold mb-1.5">시간당 대여료 (원)</label>
+            <input
+              type="number"
+              value={price}
+              onChange={(e) => setPrice(Number(e.target.value))}
+              min={100}
+              step={100}
+              className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-500 hover:border-slate-300 transition font-mono"
             />
           </div>
         </div>
 
-        {/* Location Hub & Price */}
+        {/* Location Hub */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-slate-700 font-bold mb-1.5">위탁 거점 이름</label>
@@ -272,32 +283,19 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           </div>
 
           <div>
-            <label className="block text-slate-700 font-bold mb-1.5">시간당 대여료 (원)</label>
+            <label className="block text-slate-700 font-bold mb-1.5">대여 가능 수량 (개)</label>
             <input
               type="number"
-              value={price}
-              onChange={(e) => setPrice(Number(e.target.value))}
-              min={100}
-              step={100}
-              className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-500 hover:border-slate-300 transition"
+              value={quantity}
+              onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
+              min={1}
+              step={1}
+              className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-500 hover:border-slate-300 transition font-mono"
             />
+            <p className="text-[10px] text-slate-400 mt-1.5">
+              같은 종류의 물건을 여러 개 위탁하는 경우 입력해 주세요.
+            </p>
           </div>
-        </div>
-
-        {/* Quantity */}
-        <div>
-          <label className="block text-slate-700 font-bold mb-1.5">대여 가능 수량 (개)</label>
-          <input
-            type="number"
-            value={quantity}
-            onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
-            min={1}
-            step={1}
-            className="w-full md:w-40 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-500 hover:border-slate-300 transition"
-          />
-          <p className="text-[10px] text-slate-400 mt-1.5">
-            같은 종류의 물건을 여러 개 위탁하는 경우, 몇 개까지 동시에 빌려줄 수 있는지 입력해주세요. 전부 대여되면 자동으로 대여 신청이 막힙니다.
-          </p>
         </div>
 
         {/* Signature Color Presets */}
