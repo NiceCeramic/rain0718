@@ -1,239 +1,111 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { User, ItemCategory, Item } from '../types';
-import { api, Station } from '../supabaseClient';
+import React, { useState, useRef } from 'react';
+import { Item, ItemCategory } from '../types';
+import { Station, api } from '../supabaseClient';
 import { Icons } from './Icons';
 
 interface ConsignmentFormProps {
-  currentUser: User | null;
-  onSuccess: () => void;
-  onShowAuthModal: () => void;
-}
-
-declare global {
-  interface Window {
-    kakao: any;
-  }
+  currentUser: any;
+  stations: Station[];
+  onSuccess: (newItem: Item) => void;
 }
 
 export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   currentUser,
+  stations,
   onSuccess,
-  onShowAuthModal,
 }) => {
   const [category, setCategory] = useState<ItemCategory>('우산');
   const [title, setTitle] = useState('');
-  const [price, setPrice] = useState(1000);
-  const [stations, setStations] = useState<Station[]>([]);
-  const [selectedStationId, setSelectedStationId] = useState<string>('');
-  const [hubName, setHubName] = useState('서울대 시흥캠퍼스 정문');
-  const [quantity, setQuantity] = useState(1);
+  const [price, setPrice] = useState('1000');
+  const [selectedStationName, setSelectedStationName] = useState<string>(
+    stations.length > 0 ? stations[0].name : '동탄이마트'
+  );
+  const [customLocation, setCustomLocation] = useState('');
+  const [quantity, setQuantity] = useState('1');
   const [color, setColor] = useState('#0f766e');
   const [description, setDescription] = useState('');
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  
+  // 📸 이미지 및 상태 관리
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 📍 GPS 및 지도 좌표 관리 상태
-  const [latitude, setLatitude] = useState<number>(37.373);
-  const [longitude, setLongitude] = useState<number>(126.804);
-  const [isGpsLoading, setIsGpsLoading] = useState(false);
-  const mapRef = useRef<HTMLDivElement>(null);
-  const kakaoMapInstance = useRef<any>(null);
-  const markerInstance = useRef<any>(null);
+  // file input 참조
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. 기존 거점 목록 조회
-  useEffect(() => {
-    api.getStations().then((fetched) => {
-      setStations(fetched);
-      if (fetched.length > 0) {
-        setSelectedStationId(String(fetched[0].id));
-        setHubName(fetched[0].name);
-        if (fetched[0].latitude && fetched[0].longitude) {
-          setLatitude(fetched[0].latitude);
-          setLongitude(fetched[0].longitude);
-        }
-      }
-    });
-  }, []);
-
-  // 2. 카카오 지도 초기화 및 클릭 마커 위치 지정
-  useEffect(() => {
-    if (selectedStationId !== 'custom') return;
-
-    const initMap = () => {
-      if (window.kakao && window.kakao.maps && mapRef.current) {
-        window.kakao.maps.load(() => {
-          const container = mapRef.current;
-          const options = {
-            center: new window.kakao.maps.LatLng(latitude, longitude),
-            level: 3,
-          };
-          const map = new window.kakao.maps.Map(container, options);
-          kakaoMapInstance.current = map;
-
-          // 마커 생성
-          const markerPosition = new window.kakao.maps.LatLng(latitude, longitude);
-          const marker = new window.kakao.maps.Marker({
-            position: markerPosition,
-          });
-          marker.setMap(map);
-          markerInstance.current = marker;
-
-          // 지도 클릭 이벤트: 클릭한 위치로 마커 이동 및 좌표 업데이트
-          window.kakao.maps.event.addListener(map, 'click', (mouseEvent: any) => {
-            const latLng = mouseEvent.getLatLng();
-            const newLat = latLng.getLat();
-            const newLng = latLng.getLng();
-
-            marker.setPosition(latLng);
-            setLatitude(newLat);
-            setLongitude(newLng);
-          });
-        });
-      }
-    };
-
-    setTimeout(initMap, 200);
-  }, [selectedStationId]);
-
-  // 📡 현재 사용자 위치 (GPS) 가져오기
-  const handleGetCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      alert('사용 중인 브라우저에서 GPS 위치 서비스를 지원하지 않습니다.');
-      return;
-    }
-
-    setIsGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        setLatitude(lat);
-        setLongitude(lng);
-        setIsGpsLoading(false);
-
-        // 지도 및 마커 중심 이동
-        if (kakaoMapInstance.current && markerInstance.current) {
-          const newPos = new window.kakao.maps.LatLng(lat, lng);
-          kakaoMapInstance.current.setCenter(newPos);
-          markerInstance.current.setPosition(newPos);
-        }
-      },
-      (err) => {
-        console.error(err);
-        alert('GPS 위치 정보를 가져오는데 실패했습니다.');
-        setIsGpsLoading(false);
-      },
-      { enableHighAccuracy: true }
-    );
-  };
-
-  // 🖼️ 사진 용량 자동 리사이징 & 압축 함수
-  const compressImage = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 600;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > MAX_WIDTH) {
-            height = Math.round((height * MAX_WIDTH) / width);
-            width = MAX_WIDTH;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.7));
-        };
-      };
-    });
-  };
-
-  // 📷 카메라 촬영 / 사진 선택 핸들러
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 📷 사진 선택 및 이미지 압축 처리 (모바일 완벽 대응)
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      try {
-        const compressedBase64 = await compressImage(file);
-        setImagePreview(compressedBase64);
-      } catch (err) {
-        console.error('Image compression failed:', err);
-      }
-    }
-  };
+    if (!file) return;
 
-  const handleStationSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
-    setSelectedStationId(val);
-    if (val === 'custom') {
-      setHubName('');
-    } else {
-      const found = stations.find((s) => String(s.id) === val);
-      if (found) {
-        setHubName(found.name);
-        if (found.latitude && found.longitude) {
-          setLatitude(found.latitude);
-          setLongitude(found.longitude);
+    setIsCompressing(true);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        // 모바일 웹 용량 조절을 위한 Canvas 압축 (최대 너비 800px)
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
         }
-      }
-    }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          // JPEG 포맷으로 압축
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+          setImageUrl(compressedBase64);
+        }
+        setIsCompressing(false);
+      };
+    };
+    reader.readAsDataURL(file);
   };
 
+  // 폼 제출
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!currentUser || currentUser.role === 'guest') {
-      onShowAuthModal();
-      return;
-    }
-
     if (!title.trim()) {
-      alert('제품명을 입력해 주세요.');
-      return;
-    }
-
-    if (!hubName.trim()) {
-      alert('위탁 거점 이름을 입력해 주세요.');
+      alert('제품명을 입력해주세요.');
       return;
     }
 
     setIsSubmitting(true);
 
-    try {
-      // 1. 직접 입력 거점일 경우 지도에서 지정된 정확한 (latitude, longitude) 좌표로 stations 등록
-      if (selectedStationId === 'custom' || !stations.some((s) => s.name === hubName.trim())) {
-        await api.insertStation(hubName.trim(), latitude, longitude);
-      }
+    const targetLocation = customLocation.trim() || selectedStationName;
 
-      // 2. items 테이블 데이터 등록
-      const newItemPayload: Omit<Item, 'id' | 'created_at'> = {
+    try {
+      const newItemData: Omit<Item, 'id' | 'created_at'> = {
         title: title.trim(),
         category,
-        price: Number(price),
-        location: hubName.trim(),
-        hub_name: hubName.trim(),
+        price: parseInt(price) || 1000,
+        location: targetLocation,
+        hub_name: targetLocation,
         status: 'available',
         color,
-        description: description.trim() || '상세 설명이 없습니다.',
+        description: description.trim(),
         viewers: 1,
-        image_url: imagePreview || undefined,
-        owner_id: currentUser.id,
-        quantity: Number(quantity),
+        image_url: imageUrl,
+        owner_id: currentUser?.id || null,
+        quantity: parseInt(quantity) || 1,
       } as any;
 
-      await api.insertItem(newItemPayload);
-      alert('🚀 공유 거점에 물품 위탁 등록이 성공적으로 완료되었습니다!');
-      onSuccess();
+      const created = await api.insertItem(newItemData);
+      alert('공유 물품이 성공적으로 등록되었습니다!');
+      onSuccess(created);
     } catch (err: any) {
-      console.error('위탁 등록 실패 상세 원인:', err);
-      alert(`등록 실패: ${err?.message || 'DB 수신용량 초과 또는 권한 문제일 수 있습니다.'}`);
+      console.error('Consignment insert error:', err);
+      alert(`등록 실패: ${err?.message || '입력값을 확인해 주세요.'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -242,16 +114,14 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   const colors = ['#0f766e', '#f59e0b', '#3b82f6', '#1e3a8a', '#a855f7', '#22c55e'];
 
   return (
-    <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-200 shadow-xs max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center gap-3 border-b border-slate-100 pb-5">
+    <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs max-w-2xl mx-auto space-y-6">
+      <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
         <div className="p-3 bg-teal-50 text-teal-700 rounded-2xl">
-          <Icons.Plus size={22} />
+          <Icons.Plus size={20} />
         </div>
         <div>
-          <h2 className="text-base font-bold text-slate-900">공유 자원 위탁 등록 (Consignment)</h2>
-          <p className="text-xs text-slate-400">
-            동네의 남는 유휴 장비를 거점에 위탁하고 소소한 자원 공유 수익을 시작해보세요.
-          </p>
+          <h2 className="text-sm font-bold text-slate-900">공유 자원 위탁 등록 (Consignment)</h2>
+          <p className="text-xs text-slate-400">동네의 남는 유휴 장비를 거점에 위탁하고 소소한 자원 공유 수익을 시작해보세요.</p>
         </div>
       </div>
 
@@ -259,22 +129,22 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
         {/* 카테고리 선택 */}
         <div className="space-y-2">
           <label className="font-bold text-slate-700 block">카테고리</label>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {[
               { id: '우산', label: '☔ 우산' },
               { id: '양산', label: '☀️ 양산' },
               { id: '보조배터리', label: '🔋 보조배터리' },
-              { id: 'tools', label: '🛠 공구/생활' },
-              { id: 'electronics', label: '💻 전자제품' },
-              { id: 'etc', label: '📦 기타 물품' },
+              { id: '공구/생활', label: '🛠️ 공구/생활' },
+              { id: '전자제품', label: '💻 전자제품' },
+              { id: '기타 물품', label: '📦 기타 물품' },
             ].map((cat) => (
               <button
-                type="button"
                 key={cat.id}
+                type="button"
                 onClick={() => setCategory(cat.id as ItemCategory)}
-                className={`px-4 py-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                className={`py-2.5 px-2 rounded-2xl border font-bold transition text-center truncate ${
                   category === cat.id
-                    ? 'bg-teal-50 border-teal-500 text-[#0f766e]'
+                    ? 'bg-teal-50 border-teal-500 text-teal-800'
                     : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
                 }`}
               >
@@ -284,42 +154,59 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           </div>
         </div>
 
-        {/* 📸 카메라 촬영 및 사진 첨부 영역 */}
+        {/* 📸 모바일 대응 물품 실물 사진 등록 영역 */}
         <div className="space-y-2">
           <label className="font-bold text-slate-700 block">
             물품 실물 사진 (카메라 촬영 / 앨범 첨부)
           </label>
-          
-          {imagePreview ? (
-            <div className="relative w-36 h-36 rounded-2xl overflow-hidden border border-slate-200 group">
-              <img src={imagePreview} alt="물품 미리보기" className="w-full h-full object-cover" />
-              <button
-                type="button"
-                onClick={() => setImagePreview(null)}
-                className="absolute top-2 right-2 bg-slate-900/80 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold hover:bg-slate-900 transition"
-              >
-                ✕
-              </button>
-            </div>
-          ) : (
-            <label className="w-full sm:w-52 h-32 border-2 border-dashed border-slate-200 hover:border-teal-500 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer bg-slate-50 hover:bg-teal-50/30 transition text-slate-400 hover:text-teal-700">
-              <div className="p-2.5 bg-white rounded-full shadow-xs">
-                <Icons.Camera size={22} className="text-teal-600" />
+
+          {/* 숨겨진 File Input (모바일 카메라/갤러리 연동 핵심) */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImageChange}
+            accept="image/*"
+            className="hidden"
+          />
+
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full sm:w-64 h-36 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50 hover:bg-slate-100/80 transition cursor-pointer flex flex-col items-center justify-center p-3 relative overflow-hidden group"
+          >
+            {isCompressing ? (
+              <div className="text-slate-400 font-bold flex flex-col items-center gap-1">
+                <span className="animate-spin text-lg">⏳</span>
+                <span>사진 최적화 중...</span>
               </div>
-              <span className="text-[11px] font-bold">📷 카메라로 촬영 / 사진 선택</span>
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleImageChange}
-                className="hidden"
-              />
-            </label>
+            ) : imageUrl ? (
+              <>
+                <img src={imageUrl} alt="preview" className="w-full h-full object-cover rounded-2xl" />
+                <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white font-bold text-xs">
+                  📸 사진 변경하기
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-slate-400">
+                <div className="p-3 bg-white rounded-full shadow-xs text-teal-600">
+                  <Icons.Camera size={22} />
+                </div>
+                <span className="font-bold text-[11px] text-slate-500">📷 카메라로 촬영 / 사진 선택</span>
+              </div>
+            )}
+          </div>
+          {imageUrl && (
+            <button
+              type="button"
+              onClick={() => setImageUrl(null)}
+              className="text-[10px] text-rose-500 hover:underline font-bold"
+            >
+              사진 삭제하기
+            </button>
           )}
         </div>
 
-        {/* 제품명 및 대여료 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 제품명 & 대여료 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label className="font-bold text-slate-700 block">제품명 (모델명)</label>
             <input
@@ -327,45 +214,50 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="예: 초경량 3단 미니 우산, 충전식 전동드라이버"
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 font-medium"
+              required
             />
           </div>
 
           <div className="space-y-1.5">
-            {/* 💡 요청사항 반영: 대여료 (원) */}
             <label className="font-bold text-slate-700 block">대여료 (원)</label>
             <input
               type="number"
               value={price}
-              onChange={(e) => setPrice(Number(e.target.value))}
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 font-mono font-bold"
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="1000"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 font-bold"
+              required
             />
           </div>
         </div>
 
-        {/* 🗺️ 위탁 거점 선택 / 지도 기반 마커 및 GPS 위치 지정 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
+        {/* 위탁 거점 선택 & 대여 가능 수량 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
             <label className="font-bold text-slate-700 block">위탁 거점 선택 / 직접 위치 지정</label>
             <select
-              value={selectedStationId}
-              onChange={handleStationSelect}
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 mb-1"
+              value={selectedStationName}
+              onChange={(e) => setSelectedStationName(e.target.value)}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 font-bold text-slate-800"
             >
-              {stations.map((s) => (
-                <option key={s.id} value={String(s.id)}>
-                  📍 {s.name}
-                </option>
-              ))}
-              <option value="custom">✏️ 직접 지도/GPS로 새 거점 찍기</option>
+              {stations.length === 0 ? (
+                <option value="동탄이마트">📍 동탄이마트</option>
+              ) : (
+                stations.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    📍 {s.name}
+                  </option>
+                ))
+              )}
             </select>
 
             <input
               type="text"
-              value={hubName}
-              onChange={(e) => setHubName(e.target.value)}
-              placeholder="위탁할 거점 명칭을 입력하세요 (예: 시흥 정왕동 CU 앞)"
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500"
+              value={customLocation}
+              onChange={(e) => setCustomLocation(e.target.value)}
+              placeholder="목록에 없는 경우 직접 거점명 입력"
+              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 text-[11px]"
             />
           </div>
 
@@ -375,41 +267,12 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
               type="number"
               min="1"
               value={quantity}
-              onChange={(e) => setQuantity(Number(e.target.value))}
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 font-mono font-bold"
+              onChange={(e) => setQuantity(e.target.value)}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 font-bold"
+              required
             />
           </div>
         </div>
-
-        {/* 📍 새 거점 등록 시 카카오지도 마커 찍기 및 GPS 버튼 */}
-        {selectedStationId === 'custom' && (
-          <div className="space-y-2 p-4 bg-teal-50/40 rounded-2xl border border-teal-100">
-            <div className="flex items-center justify-between">
-              <label className="font-bold text-teal-900 block text-xs">
-                📍 지도에서 거점 위치를 클릭하여 마커로 지정하세요
-              </label>
-              <button
-                type="button"
-                onClick={handleGetCurrentLocation}
-                disabled={isGpsLoading}
-                className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-xl text-[10px] transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
-              >
-                <Icons.MapPin size={12} />
-                {isGpsLoading ? '내 위치 받는 중...' : '📡 GPS 내 위치 가져오기'}
-              </button>
-            </div>
-
-            {/* 지도 영역 */}
-            <div
-              ref={mapRef}
-              className="w-full h-48 rounded-xl border border-slate-200 shadow-inner overflow-hidden relative"
-            ></div>
-
-            <p className="text-[10px] text-teal-700 font-mono font-medium">
-              선택된 좌표: 위도 {latitude.toFixed(5)}, 경도 {longitude.toFixed(5)}
-            </p>
-          </div>
-        )}
 
         {/* 대표 색상 */}
         <div className="space-y-2">
@@ -417,13 +280,15 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           <div className="flex items-center gap-3">
             {colors.map((c) => (
               <button
-                type="button"
                 key={c}
+                type="button"
                 onClick={() => setColor(c)}
-                className="w-8 h-8 rounded-full flex items-center justify-center transition transform active:scale-95 cursor-pointer"
+                className={`w-8 h-8 rounded-full transition flex items-center justify-center ${
+                  color === c ? 'ring-4 ring-teal-500/30 scale-110' : 'hover:scale-105'
+                }`}
                 style={{ backgroundColor: c }}
               >
-                {color === c && <Icons.Check size={14} className="text-white" />}
+                {color === c && <span className="text-white text-xs font-bold">✓</span>}
               </button>
             ))}
           </div>
@@ -433,20 +298,20 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
         <div className="space-y-1.5">
           <label className="font-bold text-slate-700 block">제품 상태 및 상세 설명</label>
           <textarea
-            rows={3}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            rows={3}
             placeholder="상세한 제품 상태나 대여 시 유의사항을 입력해주세요."
-            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 resize-none"
-          />
+            className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 text-xs leading-relaxed"
+          ></textarea>
         </div>
 
-        {/* Submit Button */}
+        {/* 제출 버튼 */}
         <div className="pt-2 flex justify-end">
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="px-6 py-3 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold rounded-2xl text-xs transition shadow-md cursor-pointer"
+            disabled={isSubmitting || isCompressing}
+            className="px-6 py-3.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white font-bold rounded-2xl transition cursor-pointer shadow-md"
           >
             {isSubmitting ? '위탁 등록 중...' : '공유 거점에 물품 위탁 신청하기'}
           </button>
