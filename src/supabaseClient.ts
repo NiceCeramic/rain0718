@@ -175,12 +175,12 @@ export const api = {
     return {};
   },
 
-  // 📸 물품 위탁 등록 (이미지, 거점, 등록자 ID, 수량 안전 저장)
+  // 📸 물품 위탁 등록 (컬럼 미존재 에러 방지용 가공 및 전송)
   insertItem: async (newItem: Omit<Item, 'id' | 'created_at'>): Promise<Item> => {
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        const payload = {
+        const payload: any = {
           title: newItem.title,
           category: newItem.category,
           price: (newItem as any).price ?? 1000,
@@ -208,8 +208,8 @@ export const api = {
         }
         if (data) return data as Item;
       } catch (err) {
-        console.warn('Supabase insertItem failed, falling back to local storage:', err);
-        throw err; // 에러를 상위 컴포넌트로 전달하여 alert 원인 파악
+        console.warn('Supabase insertItem failed:', err);
+        throw err;
       }
     }
 
@@ -532,13 +532,17 @@ export const api = {
             .eq('id', otherUserId)
             .maybeSingle();
 
-          // 마지막 메시지
+          // 마지막 메시지 (message 또는 message_text 호환)
           const { data: lastMsgs } = await supabase
             .from('messages')
-            .select('message, created_at')
+            .select('*')
             .eq('room_id', room.id)
             .order('created_at', { ascending: false })
             .limit(1);
+
+          const lastMsgText = lastMsgs && lastMsgs.length > 0
+            ? (lastMsgs[0].message || lastMsgs[0].message_text || '메시지가 있습니다.')
+            : '대화가 시작되었습니다.';
 
           return {
             ...room,
@@ -547,7 +551,7 @@ export const api = {
             item_color: item?.color || '#0f766e',
             item_image_url: item?.image_url || null,
             other_user_name: otherUser?.name || '에코멤버',
-            last_message: lastMsgs && lastMsgs.length > 0 ? lastMsgs[0].message : '대화가 시작되었습니다.',
+            last_message: lastMsgText,
             last_time: lastMsgs && lastMsgs.length > 0 ? lastMsgs[0].created_at : room.created_at,
           };
         })
@@ -572,7 +576,12 @@ export const api = {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      return data || [];
+      
+      // DB 컬럼이 message 또는 message_text 중 어떤 것이든 프론트엔드 message 속성으로 호환 매핑
+      return (data || []).map((row: any) => ({
+        ...row,
+        message: row.message || row.message_text || ''
+      }));
     } catch (err) {
       console.error('getMessages failed:', err);
       return [];
@@ -584,17 +593,43 @@ export const api = {
     if (!supabase) return null;
 
     try {
+      // 🔑 DB 구조(message vs message_text)에 유연하게 대응하도록 보완
+      const payload: any = {
+        room_id: roomId,
+        sender_id: senderId,
+        message: text
+      };
+
       const { data, error } = await supabase
         .from('messages')
-        .insert([{ room_id: roomId, sender_id: senderId, message: text }])
+        .insert([payload])
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // message 컬럼이 없어 실패한 경우 message_text 컬럼으로 폴백 시도
+        if (error.message?.includes('message') || error.code === 'PGRST204') {
+          const fallbackPayload = {
+            room_id: roomId,
+            sender_id: senderId,
+            message_text: text
+          };
+          const { data: fbData, error: fbError } = await supabase
+            .from('messages')
+            .insert([fallbackPayload])
+            .select()
+            .single();
+
+          if (fbError) throw fbError;
+          return { ...fbData, message: fbData.message_text };
+        }
+        throw error;
+      }
+
       return data;
     } catch (err) {
       console.error('sendMessage failed:', err);
-      return null;
+      throw err;
     }
   }
 };
