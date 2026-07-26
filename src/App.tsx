@@ -459,26 +459,42 @@ export default function App() {
             />
           )}
 
+          {/* ⚡ 배너 높이 및 짤림 현상이 전면 보완된 에코 시너지 리포트 구역 */}
           {activeTab === 'browse' && (
-            <div className="bg-slate-900 text-white rounded-3xl p-6 relative overflow-hidden mt-2">
-              <div className="absolute top-1/2 left-1/3 w-3 h-3 bg-teal-500 rounded-full shadow-[0_0_10px_rgba(20,184,166,0.5)]"></div>
-              <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                  <h3 className="text-sm font-bold text-teal-400 tracking-wider uppercase mb-1">에코 시너지 리포트</h3>
-                  <p className="text-xs text-slate-300">공유 자원을 함께 쓰는 동네 연대 행동이 지구를 살립니다.</p>
+            <div className="bg-slate-900 text-white rounded-3xl p-6 md:p-8 relative mt-4 shadow-xl border border-slate-800">
+              <div className="absolute top-4 right-6 w-2.5 h-2.5 bg-teal-400 rounded-full shadow-[0_0_12px_rgba(45,212,191,0.8)] animate-pulse"></div>
+
+              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-teal-400 tracking-wider uppercase">에코 시너지 리포트</span>
+                    <span className="bg-teal-500/20 text-teal-300 text-[10px] px-2 py-0.5 rounded-full font-mono">LIVE</span>
+                  </div>
+                  <p className="text-sm text-slate-300 font-medium">
+                    공유 자원을 함께 쓰는 동네 연대 행동이 지구를 살립니다.
+                  </p>
                 </div>
-                <div className="flex gap-6 items-center">
-                  <div className="text-left">
-                    <p className="text-[10px] text-slate-400">CO2 절감 기여량</p>
-                    <p className="text-lg font-black font-mono text-white">{co2Reduced.toFixed(1)} kg</p>
+
+                <div className="flex flex-wrap items-center gap-6 md:gap-8 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-800 w-full lg:w-auto">
+                  <div>
+                    <p className="text-[11px] text-slate-400 font-medium mb-1">CO2 절감 기여량</p>
+                    <p className="text-2xl font-black font-mono text-white tracking-tight">
+                      {co2Reduced.toFixed(1)} <span className="text-sm font-normal text-teal-400">kg</span>
+                    </p>
                   </div>
-                  <div className="text-left border-l border-white/10 pl-6">
-                    <p className="text-[10px] text-slate-400">누적 자원 순환</p>
-                    <p className="text-lg font-black font-mono text-white">{totalRentCount}회</p>
+
+                  <div className="border-l border-slate-800 pl-6 md:pl-8">
+                    <p className="text-[11px] text-slate-400 font-medium mb-1">누적 자원 순환</p>
+                    <p className="text-2xl font-black font-mono text-white tracking-tight">
+                      {totalRentCount} <span className="text-sm font-normal text-teal-400">회</span>
+                    </p>
                   </div>
-                  <div className="text-left border-l border-white/10 pl-6">
-                    <p className="text-[10px] text-slate-400">대여 가능 물건</p>
-                    <p className="text-lg font-black font-mono text-white">{items.filter(i => i.status === 'available').length}개</p>
+
+                  <div className="border-l border-slate-800 pl-6 md:pl-8">
+                    <p className="text-[11px] text-slate-400 font-medium mb-1">대여 가능 물건</p>
+                    <p className="text-2xl font-black font-mono text-white tracking-tight">
+                      {items.filter(i => i.status === 'available').length} <span className="text-sm font-normal text-teal-400">개</span>
+                    </p>
                   </div>
                 </div>
               </div>
