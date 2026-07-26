@@ -11,8 +11,8 @@ interface BrowseFeedProps {
   selectedHubId: string | null;
   onRent: (item: Item) => void;
   onShowAuthModal: () => void;
-  hubNamesMap: Record<string, string>; // Maps hub ID to hub Name
-  rentalCounts: Record<string, number>; // item id -> currently active rental count
+  hubNamesMap: Record<string, string>;
+  rentalCounts: Record<string, number>;
 }
 
 type FilterType = 'all' | 'umbrella' | 'sunshade' | 'battery' | 'tools' | 'electronics' | 'etc' | 'available' | '우산' | '양산' | '보조배터리';
@@ -26,7 +26,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
   hubNamesMap,
   rentalCounts
 }) => {
-  // Remaining stock = quantity registered by the owner - currently active rentals.
   const getRemainingStock = (item: Item): number => {
     const total = (item as any).quantity ?? 1;
     const rented = rentalCounts[String(item.id)] || 0;
@@ -37,15 +36,12 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
-  // 💬 채팅 모달 상태 관리
   const [activeChatRoom, setActiveChatRoom] = useState<{
     roomId: string;
     itemTitle: string;
   } | null>(null);
 
-  // Filter items
   const filteredItems = items.filter((item) => {
-    // 1. Hub filter from Map
     if (selectedHubId) {
       const selectedHubName = hubNamesMap[selectedHubId];
       if (selectedHubName && item.location !== selectedHubName && item.hub_name !== selectedHubName) {
@@ -53,7 +49,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
       }
     }
 
-    // 2. Tab chips filter (한글/영문 매핑 지원)
     if (filter === 'umbrella' || filter === '우산') {
       if (item.category !== 'umbrella' && item.category !== '우산') return false;
     } else if (filter === 'sunshade' || filter === '양산') {
@@ -70,7 +65,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
       if (item.status !== 'available' || getRemainingStock(item) <= 0) return false;
     }
 
-    // 3. Search query filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       const matchTitle = item.title.toLowerCase().includes(query);
@@ -82,7 +76,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     return true;
   });
 
-  // SVG Item Thumbnails mapping based on categories
   const renderItemThumbnail = (category: ItemCategory, color: string) => {
     const isUmbrella = category === 'umbrella' || category === '우산';
     const isSunshade = category === 'sunshade' || category === '양산';
@@ -108,9 +101,8 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     setSelectedItem(null);
   };
 
-  // 💬 1:1 대여 문의 채팅방 생성 및 열기 함수
   const handleOpenChat = async (e: React.MouseEvent, item: Item) => {
-    e.stopPropagation(); // 카드 클릭 모달 중복 방지
+    e.stopPropagation();
     
     if (!currentUser || currentUser.role === 'guest') {
       onShowAuthModal();
@@ -132,7 +124,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
       );
 
       if (room) {
-        setSelectedItem(null); // 물건 상세 모달이 열려있다면 닫기
+        setSelectedItem(null);
         setActiveChatRoom({
           roomId: room.id,
           itemTitle: item.title
@@ -147,7 +139,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
 
   return (
     <div className="space-y-5">
-      {/* Search Input Bar */}
+      {/* Search Bar */}
       <div className="relative">
         <span className="absolute inset-y-0 left-4 flex items-center text-slate-400">
           <Icons.Search size={16} />
@@ -266,7 +258,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                     </span>
                   </div>
 
-                  {/* 피드 카드상 1:1 빠른 대여 문의 버튼 */}
                   <button
                     onClick={(e) => handleOpenChat(e, item)}
                     className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-[#0f766e] border border-teal-200 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer"
@@ -278,11 +269,11 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                 </div>
               </div>
             );
-          })}
+          })
         )}
       </div>
 
-      {/* Item Detail Modal */}
+      {/* Detail Modal */}
       <AnimatePresence>
         {selectedItem && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
@@ -364,7 +355,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   </span>
                 </div>
 
-                {/* 💬 대여 신청 & 1:1 대여 문의 하단 버튼 세트 */}
                 <div className="pt-2 flex flex-col gap-2">
                   {selectedItem.status !== 'available' || getRemainingStock(selectedItem) <= 0 ? (
                     <button
@@ -389,7 +379,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                         🚀 소급 대여 신청하기 (보증금 이체 단계로 이동)
                       </button>
 
-                      {/* 💬 1:1 대여 문의하기 버튼 */}
                       <button
                         onClick={(e) => handleOpenChat(e, selectedItem)}
                         className="w-full py-3 bg-teal-50 hover:bg-teal-100 text-[#0f766e] border border-teal-200 font-bold rounded-2xl text-xs transition flex items-center justify-center gap-2 cursor-pointer"
@@ -406,7 +395,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
         )}
       </AnimatePresence>
 
-      {/* 💬 실시간 1:1 채팅 모달 */}
+      {/* Chat Modal */}
       {activeChatRoom && currentUser && (
         <ChatModal
           roomId={activeChatRoom.roomId}
