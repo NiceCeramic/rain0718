@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, ItemCategory, Item } from '../types';
 import { api, Station } from '../supabaseClient';
 import { Icons } from './Icons';
@@ -7,6 +7,12 @@ interface ConsignmentFormProps {
   currentUser: User | null;
   onSuccess: () => void;
   onShowAuthModal: () => void;
+}
+
+declare global {
+  interface Window {
+    kakao: any;
+  }
 }
 
 export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
@@ -26,17 +32,102 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // 📍 GPS 및 지도 좌표 관리 상태
+  const [latitude, setLatitude] = useState<number>(37.373);
+  const [longitude, setLongitude] = useState<number>(126.804);
+  const [isGpsLoading, setIsGpsLoading] = useState(false);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const kakaoMapInstance = useRef<any>(null);
+  const markerInstance = useRef<any>(null);
+
+  // 1. 기존 거점 목록 조회
   useEffect(() => {
     api.getStations().then((fetched) => {
       setStations(fetched);
       if (fetched.length > 0) {
         setSelectedStationId(String(fetched[0].id));
         setHubName(fetched[0].name);
+        if (fetched[0].latitude && fetched[0].longitude) {
+          setLatitude(fetched[0].latitude);
+          setLongitude(fetched[0].longitude);
+        }
       }
     });
   }, []);
 
-  // 🖼️ 사진 용량 자동 리사이징 & 압축 함수 (DB 전송 에러 방지)
+  // 2. 카카오 지도 초기화 및 클릭 마커 위치 지정
+  useEffect(() => {
+    if (selectedStationId !== 'custom') return;
+
+    const initMap = () => {
+      if (window.kakao && window.kakao.maps && mapRef.current) {
+        window.kakao.maps.load(() => {
+          const container = mapRef.current;
+          const options = {
+            center: new window.kakao.maps.LatLng(latitude, longitude),
+            level: 3,
+          };
+          const map = new window.kakao.maps.Map(container, options);
+          kakaoMapInstance.current = map;
+
+          // 마커 생성
+          const markerPosition = new window.kakao.maps.LatLng(latitude, longitude);
+          const marker = new window.kakao.maps.Marker({
+            position: markerPosition,
+          });
+          marker.setMap(map);
+          markerInstance.current = marker;
+
+          // 지도 클릭 이벤트: 클릭한 위치로 마커 이동 및 좌표 업데이트
+          window.kakao.maps.event.addListener(map, 'click', (mouseEvent: any) => {
+            const latLng = mouseEvent.getLatLng();
+            const newLat = latLng.getLat();
+            const newLng = latLng.getLng();
+
+            marker.setPosition(latLng);
+            setLatitude(newLat);
+            setLongitude(newLng);
+          });
+        });
+      }
+    };
+
+    setTimeout(initMap, 200);
+  }, [selectedStationId]);
+
+  // 📡 현재 사용자 위치 (GPS) 가져오기
+  const handleGetCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      alert('사용 중인 브라우저에서 GPS 위치 서비스를 지원하지 않습니다.');
+      return;
+    }
+
+    setIsGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setLatitude(lat);
+        setLongitude(lng);
+        setIsGpsLoading(false);
+
+        // 지도 및 마커 중심 이동
+        if (kakaoMapInstance.current && markerInstance.current) {
+          const newPos = new window.kakao.maps.LatLng(lat, lng);
+          kakaoMapInstance.current.setCenter(newPos);
+          markerInstance.current.setPosition(newPos);
+        }
+      },
+      (err) => {
+        console.error(err);
+        alert('GPS 위치 정보를 가져오는데 실패했습니다.');
+        setIsGpsLoading(false);
+      },
+      { enableHighAccuracy: true }
+    );
+  };
+
+  // 🖼️ 사진 용량 자동 리사이징 & 압축 함수
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -46,7 +137,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 600; // 가로 최대 600px로 축소
+          const MAX_WIDTH = 600;
           let width = img.width;
           let height = img.height;
 
@@ -59,7 +150,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.7)); // JPEG Quality 70%
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
         };
       };
     });
@@ -85,7 +176,13 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       setHubName('');
     } else {
       const found = stations.find((s) => String(s.id) === val);
-      if (found) setHubName(found.name);
+      if (found) {
+        setHubName(found.name);
+        if (found.latitude && found.longitude) {
+          setLatitude(found.latitude);
+          setLongitude(found.longitude);
+        }
+      }
     }
   };
 
@@ -110,9 +207,9 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
     setIsSubmitting(true);
 
     try {
-      // 1. 신규 거점인 경우 stations 테이블에 자동 등록 시도
+      // 1. 직접 입력 거점일 경우 지도에서 지정된 정확한 (latitude, longitude) 좌표로 stations 등록
       if (selectedStationId === 'custom' || !stations.some((s) => s.name === hubName.trim())) {
-        await api.insertStation(hubName.trim(), 37.37, 126.80);
+        await api.insertStation(hubName.trim(), latitude, longitude);
       }
 
       // 2. items 테이블 데이터 등록
@@ -235,7 +332,8 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 block">시간당 대여료 (원)</label>
+            {/* 💡 요청사항 반영: 대여료 (원) */}
+            <label className="font-bold text-slate-700 block">대여료 (원)</label>
             <input
               type="number"
               value={price}
@@ -245,10 +343,10 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           </div>
         </div>
 
-        {/* 위탁 거점 및 수량 */}
+        {/* 🗺️ 위탁 거점 선택 / 지도 기반 마커 및 GPS 위치 지정 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 block">위탁 거점 선택 / 직접 입력</label>
+            <label className="font-bold text-slate-700 block">위탁 거점 선택 / 직접 위치 지정</label>
             <select
               value={selectedStationId}
               onChange={handleStationSelect}
@@ -259,14 +357,14 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
                   📍 {s.name}
                 </option>
               ))}
-              <option value="custom">✏️ 직접 새 거점 입력하기</option>
+              <option value="custom">✏️ 직접 지도/GPS로 새 거점 찍기</option>
             </select>
 
             <input
               type="text"
               value={hubName}
               onChange={(e) => setHubName(e.target.value)}
-              placeholder="위탁할 거점 명칭을 입력하세요"
+              placeholder="위탁할 거점 명칭을 입력하세요 (예: 시흥 정왕동 CU 앞)"
               className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500"
             />
           </div>
@@ -282,6 +380,36 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
             />
           </div>
         </div>
+
+        {/* 📍 새 거점 등록 시 카카오지도 마커 찍기 및 GPS 버튼 */}
+        {selectedStationId === 'custom' && (
+          <div className="space-y-2 p-4 bg-teal-50/40 rounded-2xl border border-teal-100">
+            <div className="flex items-center justify-between">
+              <label className="font-bold text-teal-900 block text-xs">
+                📍 지도에서 거점 위치를 클릭하여 마커로 지정하세요
+              </label>
+              <button
+                type="button"
+                onClick={handleGetCurrentLocation}
+                disabled={isGpsLoading}
+                className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-xl text-[10px] transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              >
+                <Icons.MapPin size={12} />
+                {isGpsLoading ? '내 위치 받는 중...' : '📡 GPS 내 위치 가져오기'}
+              </button>
+            </div>
+
+            {/* 지도 영역 */}
+            <div
+              ref={mapRef}
+              className="w-full h-48 rounded-xl border border-slate-200 shadow-inner overflow-hidden relative"
+            ></div>
+
+            <p className="text-[10px] text-teal-700 font-mono font-medium">
+              선택된 좌표: 위도 {latitude.toFixed(5)}, 경도 {longitude.toFixed(5)}
+            </p>
+          </div>
+        )}
 
         {/* 대표 색상 */}
         <div className="space-y-2">
