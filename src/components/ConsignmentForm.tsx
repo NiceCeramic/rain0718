@@ -26,7 +26,6 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 거점 목록 불러오기
   useEffect(() => {
     api.getStations().then((fetched) => {
       setStations(fetched);
@@ -37,15 +36,45 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
     });
   }, []);
 
+  // 🖼️ 사진 용량 자동 리사이징 & 압축 함수 (DB 전송 에러 방지)
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 600; // 가로 최대 600px로 축소
+          let width = img.width;
+          let height = img.height;
+
+          if (width > MAX_WIDTH) {
+            height = Math.round((height * MAX_WIDTH) / width);
+            width = MAX_WIDTH;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.7)); // JPEG Quality 70%
+        };
+      };
+    });
+  };
+
   // 📷 카메라 촬영 / 사진 선택 핸들러
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedBase64 = await compressImage(file);
+        setImagePreview(compressedBase64);
+      } catch (err) {
+        console.error('Image compression failed:', err);
+      }
     }
   };
 
@@ -81,12 +110,12 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
     setIsSubmitting(true);
 
     try {
-      // 1. 만약 신규 거점인 경우 stations 테이블에도 추가 시도
+      // 1. 신규 거점인 경우 stations 테이블에 자동 등록 시도
       if (selectedStationId === 'custom' || !stations.some((s) => s.name === hubName.trim())) {
-        await api.insertStation(hubName.trim(), 37.37, 126.80); // 기본 위치 좌표 매핑
+        await api.insertStation(hubName.trim(), 37.37, 126.80);
       }
 
-      // 2. items 테이블에 데이터 등록
+      // 2. items 테이블 데이터 등록
       const newItemPayload: Omit<Item, 'id' | 'created_at'> = {
         title: title.trim(),
         category,
@@ -105,9 +134,9 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       await api.insertItem(newItemPayload);
       alert('🚀 공유 거점에 물품 위탁 등록이 성공적으로 완료되었습니다!');
       onSuccess();
-    } catch (err) {
-      console.error('위탁 등록 실패:', err);
-      alert('등록 중 오류가 발생했습니다. 개발자 도구(F12) 콘솔을 확인해 주세요.');
+    } catch (err: any) {
+      console.error('위탁 등록 실패 상세 원인:', err);
+      alert(`등록 실패: ${err?.message || 'DB 수신용량 초과 또는 권한 문제일 수 있습니다.'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -161,7 +190,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
         {/* 📸 카메라 촬영 및 사진 첨부 영역 */}
         <div className="space-y-2">
           <label className="font-bold text-slate-700 block">
-            물품 실물 사진 (카메라 촬영 또는 앨범 첨부)
+            물품 실물 사진 (카메라 촬영 / 앨범 첨부)
           </label>
           
           {imagePreview ? (
@@ -216,10 +245,10 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           </div>
         </div>
 
-        {/* 위탁 거점 및 대여 가능 수량 */}
+        {/* 위탁 거점 및 수량 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 block">위탁 거점 선택 / 입력</label>
+            <label className="font-bold text-slate-700 block">위탁 거점 선택 / 직접 입력</label>
             <select
               value={selectedStationId}
               onChange={handleStationSelect}
