@@ -75,6 +75,21 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
     return items.find(item => String(item.id) === String(itemId));
   };
 
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '일시 정보 없음';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime()) || date.getFullYear() < 2000) {
+      return '방금 전';
+    }
+    return date.toLocaleString('ko-KR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Intro Header */}
@@ -133,7 +148,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                     {isActive && (
                       <span className="px-2.5 py-0.5 bg-teal-50 text-[#0f766e] border border-teal-100 text-[10px] font-bold rounded-md flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#0f766e]"></span>
-                        이용 중 (정상 대여)
+                        이용 중 (입금완료)
                       </span>
                     )}
                     {isReturned && (
@@ -165,9 +180,9 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                     <h3 className="text-sm font-bold text-slate-900 mt-1">{item.title}</h3>
                     <div className="text-slate-500 text-[11px] space-y-0.5">
                       <p>📍 대여/반납 장소: <strong className="text-slate-700">{item.location}</strong></p>
-                      <p>⏰ 신청 일시: {new Date(rental.rented_at).toLocaleString('ko-KR')}</p>
+                      <p>⏰ 신청 일시: {formatDate(rental.rented_at)}</p>
                       {rental.returned_at && (
-                        <p>✅ 반납 일시: {new Date(rental.returned_at).toLocaleString('ko-KR')}</p>
+                        <p className="text-teal-700 font-bold">🎉 반납 완료 일시: {formatDate(rental.returned_at)}</p>
                       )}
                     </div>
                   </div>
@@ -203,7 +218,6 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        {/* Simulation feature (Instant approval bypass for testing) */}
                         <button
                           onClick={() => handleApproveDeposit(rental.id, item.id)}
                           disabled={loadingId === rental.id}
@@ -230,7 +244,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                   <div className="px-5 py-4 bg-teal-50/20 border-t border-slate-200 text-xs flex justify-between items-center flex-wrap gap-2">
                     <div className="flex items-center gap-2 text-slate-600">
                       <span className="w-2 h-2 rounded-full bg-teal-500 animate-ping"></span>
-                      <p className="text-[11px] font-semibold">자원을 정상 사용 중입니다. 이용을 마치신 후 거점 수거함에 반환해주세요.</p>
+                      <p className="text-[11px] font-semibold">입금 확인 완료! 자원을 사용 중입니다. 이용을 마치신 후 거점 수거함에 반환해주세요.</p>
                     </div>
 
                     <button
