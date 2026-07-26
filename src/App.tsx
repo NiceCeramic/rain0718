@@ -143,17 +143,17 @@ export default function App() {
   const loadData = async () => {
     try {
       const fetchedItems = await api.getItems();
-      setItems(fetchedItems);
+      setItems(Array.isArray(fetchedItems) ? fetchedItems : []);
 
       const fetchedStations = await api.getStations();
-      setStations(fetchedStations);
+      setStations(Array.isArray(fetchedStations) ? fetchedStations : []);
 
       const fetchedRentalCounts = await api.getActiveRentalCounts();
-      setRentalCounts(fetchedRentalCounts);
+      setRentalCounts(fetchedRentalCounts || {});
 
       if (currentUser && currentUser.role !== 'guest') {
         const fetchedRentals = await api.getRentals(currentUser.id);
-        setRentals(fetchedRentals);
+        setRentals(Array.isArray(fetchedRentals) ? fetchedRentals : []);
       } else {
         setRentals([]);
       }
@@ -268,7 +268,7 @@ export default function App() {
     showToast('⚡ 환경설정이 업데이트되었습니다.');
   };
 
-  const hubNamesMap = stations.reduce((acc, station) => {
+  const hubNamesMap = (stations || []).reduce((acc, station) => {
     acc[String(station.id)] = station.name;
     return acc;
   }, {} as Record<string, string>);
@@ -448,10 +448,12 @@ export default function App() {
           
           {activeTab === 'browse' && (
             <div className="space-y-6">
+              {/* 🔑 FIX 1: stations 및 items 전달 추가 */}
               <MapSection 
+                stations={stations}
+                items={items}
                 selectedHubId={selectedHubId} 
                 onSelectHub={setSelectedHubId} 
-                kakaoAppKey={kakaoAppKey}
               />
 
               <BrowseFeed 
@@ -467,13 +469,14 @@ export default function App() {
           )}
 
           {activeTab === 'consignment' && (
+            /* 🔑 FIX 2: stations 전달 추가 */
             <ConsignmentForm 
               currentUser={currentUser} 
+              stations={stations}
               onSuccess={() => {
                 loadData();
                 setActiveTab('browse');
               }} 
-              onShowAuthModal={() => setIsAuthModalOpen(true)} 
             />
           )}
 
