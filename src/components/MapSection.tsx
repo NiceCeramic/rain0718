@@ -10,7 +10,6 @@ interface MapSectionProps {
   onSelectHub: (hubId: string | null) => void;
 }
 
-// 📌 기본 거점 데이터 (stations 데이터가 로딩 전이거나 비어있어도 무조건 버튼 칩을 화면에 표시)
 const DEFAULT_STATIONS: Station[] = [
   { id: 1, name: '서울대 시흥캠퍼스 정문', latitude: 37.373, longitude: 126.804, created_at: '' },
   { id: 2, name: '동탄이마트', latitude: 37.200, longitude: 127.080, created_at: '' },
@@ -23,19 +22,14 @@ export const MapSection: React.FC<MapSectionProps> = ({
   selectedHubId,
   onSelectHub,
 }) => {
-  // stations가 비어있으면 DEFAULT_STATIONS 사용
-  const displayStations =
-    Array.isArray(stations) && stations.length > 0 ? stations : DEFAULT_STATIONS;
+  const displayStations = Array.isArray(stations) && stations.length > 0 ? stations : DEFAULT_STATIONS;
   const safeItems = Array.isArray(items) ? items : [];
 
-  // 선택된 거점 찾기
   const selectedStation = displayStations.find((s) => String(s.id) === selectedHubId);
 
-  // 지도 좌표 설정
   const currentLat = selectedStation?.latitude || displayStations[0]?.latitude || 37.200;
   const currentLng = selectedStation?.longitude || displayStations[0]?.longitude || 127.080;
 
-  // OpenStreetMap URL
   const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${
     currentLng - 0.008
   }%2C${currentLat - 0.005}%2C${currentLng + 0.008}%2C${
@@ -83,24 +77,23 @@ export const MapSection: React.FC<MapSectionProps> = ({
         ></iframe>
 
         <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-xl border border-slate-200 shadow-md pointer-events-none z-10">
-          <span className="text-[10px] font-bold text-teal-700 block">📍 현재 거점</span>
+          <span className="text-[10px] font-bold text-teal-700 block">📍 현재 선택 거점</span>
           <span className="text-xs font-bold text-slate-900">
-            {selectedStation ? selectedStation.name : '전체 거점'}
+            {selectedStation ? selectedStation.name : '전체 공유 거점'}
           </span>
         </div>
       </div>
 
-      {/* 3. 📍 거점 선택 버튼 칩 바 (강제 선명 노출) */}
-      <div className="pt-2 border-t border-slate-100 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-800">
-            📍 공유 거점 선택 ({displayStations.length}개)
+      {/* 3. 📍 거점 선택 버튼 칩 영역 (인라인 스타일 적용으로 100% 노출 보장) */}
+      <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold text-slate-800 block">
+            📍 공유 거점 목록 ({displayStations.length}개)
           </span>
-          <span className="text-[10px] text-teal-600 font-bold">버튼 클릭 시 해당 위치로 이동</span>
+          <span className="text-[10px] text-teal-600 font-bold">버튼 클릭 시 지도 이동 및 필터링</span>
         </div>
 
-        {/* 버튼 칩 목록 */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 scrollbar-none">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 scrollbar-none" style={{ display: 'flex', flexWrap: 'nowrap' }}>
           {displayStations.map((station) => {
             const isSelected = selectedHubId === String(station.id);
             const hubItems = safeItems.filter(
@@ -115,7 +108,7 @@ export const MapSection: React.FC<MapSectionProps> = ({
                 className={`px-4 py-2.5 rounded-2xl border text-xs font-bold transition shrink-0 flex items-center gap-2 cursor-pointer shadow-xs ${
                   isSelected
                     ? 'bg-slate-900 text-white border-slate-900 ring-2 ring-teal-500/40 shadow-md'
-                    : 'bg-teal-50/60 text-slate-700 border-teal-200 hover:bg-teal-100'
+                    : 'bg-teal-50/80 text-slate-800 border-teal-200 hover:bg-teal-100'
                 }`}
               >
                 <span>📍 {station.name}</span>
@@ -124,7 +117,7 @@ export const MapSection: React.FC<MapSectionProps> = ({
                     isSelected ? 'bg-teal-500 text-white' : 'bg-white text-teal-800 border border-teal-200'
                   }`}
                 >
-                  {hubItems.length}개 물품
+                  {hubItems.length}개
                 </span>
               </button>
             );
