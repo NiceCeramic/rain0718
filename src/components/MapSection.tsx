@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Item } from '../types';
 import { Station } from '../supabaseClient';
 import { Icons } from './Icons';
@@ -8,6 +8,7 @@ interface MapSectionProps {
   items: Item[];
   selectedHubId: string | null;
   onSelectHub: (hubId: string | null) => void;
+  kakaoAppKey?: string;
 }
 
 export const MapSection: React.FC<MapSectionProps> = ({
@@ -16,40 +17,39 @@ export const MapSection: React.FC<MapSectionProps> = ({
   selectedHubId,
   onSelectHub,
 }) => {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
-    lat: 37.373,
-    lng: 126.804,
-  });
+  const [currentLocationText, setCurrentLocationText] = useState<string>('경기도 평택시 / 주변 거점');
 
-  // 내 GPS 위치 조회
+  // 사용자의 대략적인 위치 이름 확인 (예외 처리 철저 적용)
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUserLocation({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          });
-        },
-        () => {
-          // 기본 위치 유지
-        }
-      );
+    try {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          () => {
+            setCurrentLocationText('현재 위치 기준 주변 공유 거점');
+          },
+          () => {
+            setCurrentLocationText('기본 지역 (평택/시흥) 공유 거점');
+          },
+          { timeout: 5000 }
+        );
+      }
+    } catch (e) {
+      console.warn('Geolocation error ignored:', e);
     }
   }, []);
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="p-2 bg-teal-50 text-teal-700 rounded-xl">
-            <Icons.MapPin size={18} />
+    <div className="bg-white rounded-3xl border border-slate-200 p-5 md:p-6 shadow-xs space-y-4">
+      {/* 상단 타이틀 및 상태 */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-teal-50 text-teal-700 rounded-2xl shrink-0">
+            <Icons.MapPin size={20} />
           </div>
           <div>
-            <h3 className="text-xs font-bold text-slate-900">내 주변 자원 공유 거점 목록</h3>
-            <p className="text-[10px] text-slate-400">
-              위탁 거점을 선택하여 인근 물품을 둘러보세요.
+            <h3 className="text-sm font-bold text-slate-900">내 주변 자원 공유 거점 지도 및 목록</h3>
+            <p className="text-xs text-slate-400 font-medium">
+              {currentLocationText} • 거점을 클릭하면 해당 위치의 물품만 모아볼 수 있습니다.
             </p>
           </div>
         </div>
@@ -57,18 +57,18 @@ export const MapSection: React.FC<MapSectionProps> = ({
         {selectedHubId && (
           <button
             onClick={() => onSelectHub(null)}
-            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold transition cursor-pointer"
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer self-start sm:self-auto"
           >
-            전체 거점 보기
+            🔄 전체 거점 보기
           </button>
         )}
       </div>
 
-      {/* 📍 공유 거점 카드 및 핀 목록 (API Key 없이 완벽 작동) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
+      {/* 거점 목록 카드 그리드 (빈 박스 오류 완전 차단 및 시각화 개선) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
         {stations.length === 0 ? (
-          <div className="col-span-full py-8 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-            등록된 공유 거점이 없습니다.
+          <div className="col-span-full py-10 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            등록된 공유 거점이 없습니다. 위탁 등록에서 새 거점을 추가해 보세요!
           </div>
         ) : (
           stations.map((station) => {
@@ -81,28 +81,35 @@ export const MapSection: React.FC<MapSectionProps> = ({
               <div
                 key={station.id}
                 onClick={() => onSelectHub(isSelected ? null : String(station.id))}
-                className={`p-3.5 rounded-2xl border transition cursor-pointer flex flex-col justify-between space-y-2 ${
+                className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col justify-between space-y-3 shadow-xs ${
                   isSelected
-                    ? 'bg-teal-50/80 border-teal-500 shadow-xs'
-                    : 'bg-slate-50 border-slate-200 hover:border-teal-300 hover:bg-white'
+                    ? 'bg-teal-50/90 border-teal-500 ring-2 ring-teal-500/20'
+                    : 'bg-white border-slate-200 hover:border-teal-300 hover:bg-slate-50/50'
                 }`}
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-base">📍</span>
-                    <span className="font-bold text-xs text-slate-800 truncate max-w-[130px]">
+                    <span className="text-lg">📍</span>
+                    <span className="font-bold text-xs text-slate-900 truncate">
                       {station.name}
                     </span>
                   </div>
-                  <span className="px-2 py-0.5 bg-teal-100 text-teal-800 rounded-full text-[10px] font-bold shrink-0">
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 ${
+                    hubItems.length > 0 ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-500'
+                  }`}>
                     물품 {hubItems.length}개
                   </span>
                 </div>
 
-                <div className="text-[11px] text-slate-500 line-clamp-1">
+                <div className="text-[11px] text-slate-600 line-clamp-2 font-medium">
                   {hubItems.length > 0
                     ? `• ${hubItems.map((i) => i.title).join(', ')}`
-                    : '현재 위탁 대기 중'}
+                    : '현재 위탁 대기 중인 물품이 없습니다.'}
+                </div>
+
+                <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between pt-1 border-t border-slate-100">
+                  <span>위도: {station.latitude ? station.latitude.toFixed(3) : '37.373'}</span>
+                  <span className="text-teal-600 font-bold">{isSelected ? '필터링 적용중 ✓' : '클릭하여 선택'}</span>
                 </div>
               </div>
             );
