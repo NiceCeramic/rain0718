@@ -9,7 +9,6 @@ const STORAGE_KEYS = {
   USERS: 'ecolink_local_users_v4'
 };
 
-// Local storage helpers for mock mode
 const getLocalItems = (): Item[] => {
   const data = localStorage.getItem(STORAGE_KEYS.ITEMS);
   if (!data) {
@@ -45,7 +44,6 @@ const saveLocalUsers = (users: User[]) => {
   localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
 };
 
-// Config Manager
 export const getSupabaseConfig = (): SupabaseConfig => {
   const stored = localStorage.getItem(STORAGE_KEYS.CONFIG);
   if (stored) {
@@ -70,7 +68,6 @@ export const saveKakaoAppKey = (key: string) => {
   localStorage.setItem('ecolink_kakao_appkey', key);
 };
 
-// Singleton Supabase instance
 let supabaseInstance: SupabaseClient | null = null;
 
 export const getSupabaseClient = (): SupabaseClient | null => {
@@ -103,7 +100,6 @@ export const getSupabaseClient = (): SupabaseClient | null => {
   return supabaseInstance;
 };
 
-// Real station/hub row shape, matches public.stations columns exactly
 export interface Station {
   id: number;
   created_at: string;
@@ -119,9 +115,7 @@ const mapDbRentalToRental = (row: any): Rental => ({
   price_paid: row.price_paid ?? 0
 });
 
-// Adapter APIs
 export const api = {
-  // Check if we are active on Supabase or local
   isSupabaseActive: (): boolean => {
     return getSupabaseClient() !== null;
   },
@@ -191,7 +185,6 @@ export const api = {
       }
     }
 
-    // Local Fallback
     const localItems = getLocalItems();
     const mockId = localItems.length > 0 ? Math.max(...localItems.map(i => typeof i.id === 'number' ? i.id : 0)) + 1 : 1;
     const itemWithId: Item = {
@@ -219,7 +212,6 @@ export const api = {
       }
     }
 
-    // Local Fallback
     const localItems = getLocalItems();
     const updated = localItems.map(item =>
       item.id === itemId || String(item.id) === String(itemId)
@@ -334,7 +326,6 @@ export const api = {
       }
     }
 
-    // Local Fallback
     const localRentals = getLocalRentals();
     const mockId = 'rent-' + (localRentals.length + 1) + '-' + Math.floor(Math.random() * 1000);
     const rentalWithId: Rental = {
@@ -376,7 +367,6 @@ export const api = {
       }
     }
 
-    // Local Fallback
     const localRentals = getLocalRentals();
     const updated = localRentals.map(rental => {
       if (rental.id === rentalId || String(rental.id) === String(rentalId)) {
@@ -451,27 +441,27 @@ export const api = {
     }
   },
 
-  // 💬 4. CHAT (실시간 1:1 대여 문의 채팅 API 추가)
+  // 💬 4. CHAT (실시간 1:1 대여 문의 채팅 API 정밀 보완)
   getOrCreateChatRoom: async (itemId: number | string, buyerId: string, sellerId: string) => {
     const supabase = getSupabaseClient();
     if (!supabase) return null;
 
     try {
-      // 기존 채팅방 유무 검색
-      const { data: existing, error: searchErr } = await supabase
+      const stringItemId = String(itemId);
+      const { data: existingList, error: searchErr } = await supabase
         .from('chat_rooms')
         .select('*')
-        .eq('item_id', itemId)
+        .eq('item_id', stringItemId)
         .eq('buyer_id', buyerId)
-        .eq('seller_id', sellerId)
-        .maybeSingle();
+        .eq('seller_id', sellerId);
 
-      if (existing) return existing;
+      if (!searchErr && existingList && existingList.length > 0) {
+        return existingList[0];
+      }
 
-      // 없으면 새로 생성
       const { data: created, error: createErr } = await supabase
         .from('chat_rooms')
-        .insert([{ item_id: itemId, buyer_id: buyerId, seller_id: sellerId }])
+        .insert([{ item_id: stringItemId, buyer_id: buyerId, seller_id: sellerId }])
         .select()
         .single();
 
@@ -507,9 +497,10 @@ export const api = {
     if (!supabase) return null;
 
     try {
+      // 🔑 DB message 컬럼에 명확히 매핑
       const { data, error } = await supabase
         .from('messages')
-        .insert([{ room_id: roomId, sender_id: senderId, message_text: text }])
+        .insert([{ room_id: roomId, sender_id: senderId, message: text }])
         .select()
         .single();
 
