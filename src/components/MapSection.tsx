@@ -1,139 +1,157 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Item } from '../types';
+import { Station } from '../supabaseClient';
 import { Icons } from './Icons';
-import { motion, AnimatePresence } from 'motion/react';
 
 interface MapSectionProps {
+  stations: Station[];
+  items: Item[];
   selectedHubId: string | null;
   onSelectHub: (hubId: string | null) => void;
-  kakaoAppKey?: string; // kept for prop compatibility with App.tsx; no longer used
+  kakaoAppKey?: string;
 }
 
-type LocationStatus = 'loading' | 'granted' | 'denied' | 'unavailable';
+export const MapSection: React.FC<MapSectionProps> = ({
+  stations,
+  items,
+  selectedHubId,
+  onSelectHub,
+}) => {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
-const DEFAULT_COORDS = { lat: 37.5665, lng: 126.9780 }; // Seoul City Hall, used only if GPS truly fails
-
-export const MapSection: React.FC<MapSectionProps> = () => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-
-  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [locationStatus, setLocationStatus] = useState<LocationStatus>('loading');
-  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
-
-  const requestLocation = useCallback(() => {
-    setLocationStatus('loading');
-
-    if (!navigator.geolocation) {
-      setLocationStatus('unavailable');
-      setUserCoords(DEFAULT_COORDS);
-      return;
+  // 1. 내 위치(GPS) 취득
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setUserLocation({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          });
+        },
+        () => {
+          // 기본 위치: 평택/시흥 주변 기본 좌표
+          setUserLocation({ lat: 37.373, lng: 126.804 });
+        }
+      );
+    } else {
+      setUserLocation({ lat: 37.373, lng: 126.804 });
     }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setUserCoords({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
-        setLocationAccuracy(position.coords.accuracy ?? null);
-        setLocationStatus('granted');
-      },
-      (error) => {
-        console.warn('Geolocation failed:', error);
-        setLocationStatus(error.code === error.PERMISSION_DENIED ? 'denied' : 'unavailable');
-        setUserCoords(DEFAULT_COORDS);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
   }, []);
 
+  // 2. 카카오 지도 및 등록 거점/물품 마커 렌더링
   useEffect(() => {
-    requestLocation();
-  }, [requestLocation]);
+    if (!mapContainerRef.current || !userLocation) return;
 
-  // Build an OpenStreetMap embed URL (no API key required) centered on the user's real coordinates
-  const buildOsmEmbedUrl = (lat: number, lng: number) => {
-    const delta = 0.006; // small bbox for a close-in view
-    const bbox = `${lng - delta}%2C${lat - delta}%2C${lng + delta}%2C${lat + delta}`;
-    return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
-  };
+    const initMap = () => {
+      if (window.kakao && window.kakao.maps) {
+        window.kakao.maps.load(() => {
+          // 기존 마커 제거
+          markersRef.current.forEach((m) => m.setMap(null));
+          markersRef.current = [];
+
+          const mapCenter = new window.kakao.maps.LatLng(userLocation.lat, userLocation.lng);
+          const map = new window.kakao.maps.Map(mapContainerRef.current, {
+            center: mapCenter,
+            level: 5,
+          });
+          mapInstanceRef.current = map;
+
+          // 사용자 위치 마커
+          const userMarker = new window.kakao.maps.Marker({
+            position: mapCenter,
+          });
+          userMarker.setMap(map);
+          markersRef.current.push(userMarker);
+
+          // 등록된 거점(Stations) 마커 표시
+          stations.forEach((station) => {
+            if (!station.latitude || !station.longitude) return;
+
+            const stationPos = new window.kakao.maps.LatLng(
+              station.latitude,
+              station.longitude
+            );
+
+            // 해당 거점에 속한 물품 추출
+            const hubItems = items.filter(
+              (i) => i.location === station.name || (i as any).hub_name === station.name
+            );
+
+            const marker = new window.kakao.maps.Marker({
+              position: stationPos,
+              clickable: true,
+            });
+
+            marker.setMap(map);
+            markersRef.current.push(marker);
+
+            // 거점 클릭 시 인포윈도우(물품 정보) 표시
+            const infowindow = new window.kakao.maps.InfoWindow({
+              content: `
+                <div style="padding:10px;font-size:12px;min-width:160px;line-height:1.4;">
+                  <strong style="color:#0f766e;font-size:13px;">📍 ${station.name}</strong><br/>
+                  <span style="color:#64748b;">보유 등록 물품: <strong>${hubItems.length}개</strong></span>
+                  ${
+                    hubItems.length > 0
+                      ? `<div style="margin-top:4px;font-size:11px;color:#334155;">• ${hubItems
+                          .slice(0, 2)
+                          .map((i) => i.title)
+                          .join('<br/>• ')} ${
+                          hubItems.length > 2 ? ` 외 ${hubItems.length - 2}개` : ''
+                        }</div>`
+                      : '<div style="margin-top:4px;color:#94a3b8;">등록된 물품 대기중</div>'
+                  }
+                </div>
+              `,
+              removable: true,
+            });
+
+            window.kakao.maps.event.addListener(marker, 'click', () => {
+              infowindow.open(map, marker);
+              onSelectHub(String(station.id));
+            });
+          });
+        });
+      }
+    };
+
+    setTimeout(initMap, 200);
+  }, [userLocation, stations, items]);
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden mb-6 transition-all duration-300">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+    <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-3">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-xl bg-teal-50 text-teal-700">
+          <div className="p-2 bg-teal-50 text-teal-700 rounded-xl">
             <Icons.MapPin size={18} />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-slate-900">📍 내 현재 위치</h2>
-            <p className="text-xs text-slate-500">
-              {locationStatus === 'loading' && 'GPS로 위치를 확인하는 중입니다...'}
-              {locationStatus === 'granted' && `실시간 GPS 위치를 지도 중심에 표시합니다.${locationAccuracy ? ` (정확도 약 ${Math.round(locationAccuracy)}m)` : ''}`}
-              {locationStatus === 'denied' && '위치 권한이 거부되어 기본 위치로 표시 중입니다.'}
-              {locationStatus === 'unavailable' && '이 기기에서 위치 정보를 사용할 수 없어 기본 위치로 표시 중입니다.'}
+            <h3 className="text-xs font-bold text-slate-900">내 주변 자원 공유 거점 지도</h3>
+            <p className="text-[10px] text-slate-400">
+              마커를 클릭하면 해당 거점에 위탁된 물품을 확인 및 필터링할 수 있습니다.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {(locationStatus === 'denied' || locationStatus === 'unavailable') && (
-            <button
-              onClick={requestLocation}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-slate-200 hover:border-teal-500 text-xs text-teal-700 font-semibold transition"
-            >
-              <Icons.RefreshCw size={12} />
-              위치 다시 시도
-            </button>
-          )}
+        {selectedHubId && (
           <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-slate-200 hover:border-teal-500 text-xs text-slate-600 font-semibold transition"
+            onClick={() => onSelectHub(null)}
+            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold transition cursor-pointer"
           >
-            {isCollapsed ? (
-              <>지도 펼치기 <Icons.ChevronDown size={14} /></>
-            ) : (
-              <>지도 접기 <Icons.ChevronUp size={14} /></>
-            )}
+            전체 거점 보기
           </button>
-        </div>
+        )}
       </div>
 
-      <AnimatePresence initial={false}>
-        {!isCollapsed && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: 'easeInOut' }}
-            className="overflow-hidden"
-          >
-            <div className="p-5">
-              {locationStatus === 'loading' || !userCoords ? (
-                /* ----------------- LOADING STATE ----------------- */
-                <div className="w-full h-[280px] rounded-2xl border border-slate-200 bg-slate-50 flex flex-col items-center justify-center gap-2">
-                  <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-                  <p className="text-xs text-slate-400 font-semibold">GPS 위치를 가져오는 중...</p>
-                </div>
-              ) : (
-                /* ----------------- OPENSTREETMAP, CENTERED ON REAL GPS ----------------- */
-                <div className="relative w-full h-[280px] rounded-2xl border border-slate-200 overflow-hidden shadow-inner">
-                  <iframe
-                    key={`${userCoords.lat}-${userCoords.lng}`}
-                    title="내 현재 위치 지도"
-                    className="w-full h-full border-0"
-                    src={buildOsmEmbedUrl(userCoords.lat, userCoords.lng)}
-                  />
-                  <div className="absolute bottom-3 left-3 z-10 bg-slate-900/90 text-white font-bold text-[10px] px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>실시간 GPS 위치 기반 지도</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* 카카오 지도 박스 */}
+      <div
+        ref={mapContainerRef}
+        className="w-full h-52 rounded-2xl border border-slate-200 shadow-inner overflow-hidden relative"
+      ></div>
     </div>
   );
 };
