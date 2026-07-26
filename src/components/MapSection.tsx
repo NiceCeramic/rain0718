@@ -1,58 +1,81 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { Item } from '../types';
 import { Station } from '../supabaseClient';
 import { Icons } from './Icons';
+
+// Leaflet 기본 마커 아이콘 깨짐 방지 설정
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIcon2x,
+  shadowUrl: markerShadow,
+});
+
+// 커스텀 핀 마커 아이콘
+const customIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-teal.png',
+  shadowUrl: markerShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
 
 interface MapSectionProps {
   stations?: Station[];
   items?: Item[];
   selectedHubId: string | null;
   onSelectHub: (hubId: string | null) => void;
-  kakaoAppKey?: string;
 }
 
+// 선택된 거점으로 지도 중심 이동시키는 컴포넌트
+const RecenterMap = ({ lat, lng }: { lat: number; lng: number }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView([lat, lng], 14);
+  }, [lat, lng, map]);
+  return null;
+};
+
 export const MapSection: React.FC<MapSectionProps> = ({
-  stations = [], // 🛡️ undefined 방지 기본값 세팅
-  items = [],    // 🛡️ undefined 방지 기본값 세팅
+  stations = [],
+  items = [],
   selectedHubId,
   onSelectHub,
 }) => {
-  const [currentLocationText, setCurrentLocationText] = useState<string>('경기도 평택시 / 주변 거점');
-
-  // 안전하게 배열 검증
   const safeStations = Array.isArray(stations) ? stations : [];
   const safeItems = Array.isArray(items) ? items : [];
 
-  useEffect(() => {
-    try {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          () => {
-            setCurrentLocationText('현재 위치 기준 주변 공유 거점');
-          },
-          () => {
-            setCurrentLocationText('기본 지역 공유 거점');
-          },
-          { timeout: 5000 }
-        );
-      }
-    } catch (e) {
-      console.warn('Geolocation error ignored:', e);
-    }
-  }, []);
+  // 기본 지도 중심점 (평택 / 시흥 인근)
+  const defaultCenter = { lat: 37.0006, lng: 127.0894 };
+
+  // 선택된 거점 좌표
+  const selectedStation = safeStations.find((s) => String(s.id) === selectedHubId);
+  const mapCenter = selectedStation && selectedStation.latitude && selectedStation.longitude
+    ? { lat: selectedStation.latitude, lng: selectedStation.longitude }
+    : safeStations.length > 0 && safeStations[0].latitude
+    ? { lat: safeStations[0].latitude!, lng: safeStations[0].longitude! }
+    : defaultCenter;
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 p-5 md:p-6 shadow-xs space-y-4">
-      {/* 상단 타이틀 및 상태 */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-teal-50 text-teal-700 rounded-2xl shrink-0">
             <Icons.MapPin size={20} />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900">내 주변 자원 공유 거점 지도 및 목록</h3>
-            <p className="text-xs text-slate-400 font-medium">
-              {currentLocationText} • 거점을 클릭하면 해당 위치의 물품만 모아볼 수 있습니다.
+            <h3 className="text-sm font-bold text-slate-900">내 주변 자원 공유 거점 지도</h3>
+            <p className="text-xs text-slate-400">
+              마커를 클릭하면 해당 거점의 위탁 물품을 확인하실 수 있습니다.
             </p>
           </div>
         </div>
@@ -60,64 +83,64 @@ export const MapSection: React.FC<MapSectionProps> = ({
         {selectedHubId && (
           <button
             onClick={() => onSelectHub(null)}
-            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer self-start sm:self-auto"
+            className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
           >
             🔄 전체 거점 보기
           </button>
         )}
       </div>
 
-      {/* 거점 목록 카드 그리드 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
-        {safeStations.length === 0 ? (
-          <div className="col-span-full py-10 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-            등록된 공유 거점을 불러오는 중이거나 거점이 없습니다.
-          </div>
-        ) : (
-          safeStations.map((station) => {
+      {/* 🗺️ OpenStreetMap 지도 렌더링 영역 */}
+      <div className="w-full h-80 rounded-2xl overflow-hidden border border-slate-200 z-0 relative shadow-inner">
+        <MapContainer
+          center={[mapCenter.lat, mapCenter.lng]}
+          zoom={13}
+          scrollWheelZoom={false}
+          style={{ width: '100%', height: '100%' }}
+        >
+          {/* OpenStreetMap 타일 레이어 */}
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+
+          <RecenterMap lat={mapCenter.lat} lng={mapCenter.lng} />
+
+          {/* 거점 핀 마커 생성 */}
+          {safeStations.map((station) => {
+            const lat = station.latitude || 37.0006;
+            const lng = station.longitude || 127.0894;
             const hubItems = safeItems.filter(
               (i) => i.location === station.name || (i as any).hub_name === station.name
             );
-            const isSelected = selectedHubId === String(station.id);
 
             return (
-              <div
+              <Marker
                 key={station.id}
-                onClick={() => onSelectHub(isSelected ? null : String(station.id))}
-                className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col justify-between space-y-3 shadow-xs ${
-                  isSelected
-                    ? 'bg-teal-50/90 border-teal-500 ring-2 ring-teal-500/20'
-                    : 'bg-white border-slate-200 hover:border-teal-300 hover:bg-slate-50/50'
-                }`}
+                position={[lat, lng]}
+                icon={customIcon}
+                eventHandlers={{
+                  click: () => onSelectHub(String(station.id)),
+                }}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">📍</span>
-                    <span className="font-bold text-xs text-slate-900 truncate">
-                      {station.name}
-                    </span>
+                <Popup>
+                  <div className="p-1 space-y-1 font-sans">
+                    <h4 className="font-bold text-xs text-slate-900">📍 {station.name}</h4>
+                    <p className="text-[11px] text-teal-700 font-bold">
+                      위탁 물품 {hubItems.length}개
+                    </p>
+                    <button
+                      onClick={() => onSelectHub(String(station.id))}
+                      className="w-full mt-1 py-1 bg-slate-900 text-white rounded text-[10px] font-bold"
+                    >
+                      이 거점 물품만 보기
+                    </button>
                   </div>
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 ${
-                    hubItems.length > 0 ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-500'
-                  }`}>
-                    물품 {hubItems.length}개
-                  </span>
-                </div>
-
-                <div className="text-[11px] text-slate-600 line-clamp-2 font-medium">
-                  {hubItems.length > 0
-                    ? `• ${hubItems.map((i) => i.title).join(', ')}`
-                    : '현재 위탁 대기 중인 물품이 없습니다.'}
-                </div>
-
-                <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between pt-1 border-t border-slate-100">
-                  <span>위도: {station.latitude ? station.latitude.toFixed(3) : '37.373'}</span>
-                  <span className="text-teal-600 font-bold">{isSelected ? '필터링 적용중 ✓' : '클릭하여 선택'}</span>
-                </div>
-              </div>
+                </Popup>
+              </Marker>
             );
-          })
-        )}
+          })}
+        </MapContainer>
       </div>
     </div>
   );
