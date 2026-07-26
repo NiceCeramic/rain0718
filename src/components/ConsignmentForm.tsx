@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Item, ItemCategory } from '../types';
 import { Station, api } from '../supabaseClient';
 import { Icons } from './Icons';
@@ -9,26 +9,36 @@ interface ConsignmentFormProps {
   onSuccess?: (newItem: Item) => void;
 }
 
+// 기본 거점 데이터 (DB 연동 실패 시 기본 노출용)
+const DEFAULT_STATIONS: Station[] = [
+  { id: 1, name: '서울대 시흥캠퍼스 정문', latitude: 37.373, longitude: 126.804, created_at: '' },
+  { id: 2, name: '동탄이마트', latitude: 37.200, longitude: 127.080, created_at: '' },
+  { id: 3, name: '평택역 공유센터', latitude: 36.990, longitude: 127.085, created_at: '' },
+];
+
 export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
   currentUser = null,
   stations = [],
   onSuccess,
 }) => {
-  // 🛡️ stations가 undefined, null이거나 배열이 아닐 때 발생하던 length 에러 완전 방지
-  const safeStations = Array.isArray(stations) ? stations : [];
+  // stations가 비어있으면 기본 거점 목록 사용
+  const availableStations = Array.isArray(stations) && stations.length > 0 ? stations : DEFAULT_STATIONS;
 
   const [category, setCategory] = useState<ItemCategory>('우산');
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState('1000');
-  
-  // 🛡️ safeStations 안전하게 조회
-  const [selectedStationName, setSelectedStationName] = useState<string>(
-    safeStations.length > 0 ? safeStations[0].name : '지정 거점'
-  );
+  const [selectedStationName, setSelectedStationName] = useState<string>(availableStations[0].name);
   const [customLocation, setCustomLocation] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [color, setColor] = useState('#0f766e');
   const [description, setDescription] = useState('');
+
+  // 📍 stations 데이터가 뒤늦게 로드되면 드롭다운 첫번째 항목으로 자동 갱신
+  useEffect(() => {
+    if (availableStations.length > 0 && (!selectedStationName || selectedStationName === '지정 거점')) {
+      setSelectedStationName(availableStations[0].name);
+    }
+  }, [stations]);
 
   // 📸 이미지 및 업로드 상태
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -49,7 +59,6 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
       const img = new Image();
       img.src = event.target?.result as string;
       img.onload = () => {
-        // 모바일 웹 용량 압축 (Canvas 이용)
         const canvas = document.createElement('canvas');
         const MAX_WIDTH = 800;
         let width = img.width;
@@ -84,7 +93,7 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
 
     setIsSubmitting(true);
 
-    const targetLocation = customLocation.trim() || selectedStationName || '지정 거점';
+    const targetLocation = customLocation.trim() || selectedStationName || '서울대 시흥캠퍼스 정문';
 
     try {
       const newItemData: Omit<Item, 'id' | 'created_at'> = {
@@ -233,24 +242,20 @@ export const ConsignmentForm: React.FC<ConsignmentFormProps> = ({
           </div>
         </div>
 
-        {/* 위탁 거점 선택 & 수량 */}
+        {/* 📍 위탁 거점 선택 (등록된 거점 목록 바인딩) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="font-bold text-slate-700 block">위탁 거점 선택 / 직접 위치 지정</label>
             <select
               value={selectedStationName}
               onChange={(e) => setSelectedStationName(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 font-bold text-slate-800"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 font-bold text-slate-800 cursor-pointer"
             >
-              {safeStations.length === 0 ? (
-                <option value="지정 거점">📍 지정 거점</option>
-              ) : (
-                safeStations.map((s) => (
-                  <option key={s.id} value={s.name}>
-                    📍 {s.name}
-                  </option>
-                ))
-              )}
+              {availableStations.map((s) => (
+                <option key={s.id || s.name} value={s.name}>
+                  📍 {s.name}
+                </option>
+              ))}
             </select>
 
             <input
