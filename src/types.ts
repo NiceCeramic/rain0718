@@ -8,7 +8,18 @@ export interface User {
   created_at?: string;
 }
 
-export type ItemCategory = '우산' | '양산' | '보조배터리';
+// 💡 확장된 카테고리 타입 (영문 ID 및 한글 호환)
+export type ItemCategory = 
+  | 'umbrella' 
+  | 'sunshade' 
+  | 'battery' 
+  | 'tools' 
+  | 'electronics' 
+  | 'etc' 
+  | '우산' 
+  | '양산' 
+  | '보조배터리';
+
 export type ItemStatus = 'available' | 'rented' | 'broken';
 
 export interface Item {
@@ -17,8 +28,10 @@ export interface Item {
   title: string;
   category: ItemCategory;
   location: string;
+  hub_name?: string; // 💡 신규 거점명 필드 추가
   distance: string;
   price: number;
+  quantity?: number; // 💡 대여 가능 수량 필드 추가
   color: string; // Hex color code
   status: ItemStatus;
   description: string;
@@ -48,8 +61,8 @@ export interface HubPin {
   name: string;
   type: 'store' | 'cafe' | 'laundry';
   count: number;
-  lat: number; // For plotting on our custom box map (0-100)
-  lng: number; // For plotting on our custom box map (0-100)
+  lat: number; // For plotting on custom map
+  lng: number; // For plotting on custom map
   address: string;
 }
 
