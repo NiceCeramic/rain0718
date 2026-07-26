@@ -597,7 +597,8 @@ export const api = {
       const payload: any = {
         room_id: roomId,
         sender_id: senderId,
-        message: text
+        message: text,
+        is_read: false
       };
 
       const { data, error } = await supabase
@@ -612,7 +613,8 @@ export const api = {
           const fallbackPayload = {
             room_id: roomId,
             sender_id: senderId,
-            message_text: text
+            message_text: text,
+            is_read: false
           };
           const { data: fbData, error: fbError } = await supabase
             .from('messages')
@@ -630,6 +632,54 @@ export const api = {
     } catch (err) {
       console.error('sendMessage failed:', err);
       throw err;
+    }
+  },
+
+  // 🔔 5. UNREAD MESSAGES (안읽은 메시지 수 및 읽음 처리 기능 추가)
+  getUnreadMessageCount: async (userId: string): Promise<number> => {
+    const supabase = getSupabaseClient();
+    if (!supabase || !userId) return 0;
+
+    try {
+      // 내가 속한 채팅방 목록 조회
+      const { data: rooms } = await supabase
+        .from('chat_rooms')
+        .select('id')
+        .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`);
+
+      if (!rooms || rooms.length === 0) return 0;
+
+      const roomIds = rooms.map((r) => r.id);
+
+      // 상대방이 보낸 메시지 중 is_read = false 인 개수 반환
+      const { count, error } = await supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .in('room_id', roomIds)
+        .neq('sender_id', userId)
+        .eq('is_read', false);
+
+      if (error) throw error;
+      return count || 0;
+    } catch (err) {
+      console.error('getUnreadMessageCount failed:', err);
+      return 0;
+    }
+  },
+
+  markMessagesAsRead: async (roomId: string, userId: string): Promise<void> => {
+    const supabase = getSupabaseClient();
+    if (!supabase || !roomId || !userId) return;
+
+    try {
+      await supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('room_id', roomId)
+        .neq('sender_id', userId)
+        .eq('is_read', false);
+    } catch (err) {
+      console.error('markMessagesAsRead failed:', err);
     }
   }
 };
