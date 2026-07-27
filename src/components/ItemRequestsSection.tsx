@@ -1,218 +1,227 @@
 import React, { useState, useEffect } from 'react';
-import { Rental, Item, User } from '../types';
+import { User } from '../types';
 import { api } from '../supabaseClient';
 import { Icons } from './Icons';
 
-interface TransactionsSectionProps {
-  rentals?: Rental[];
-  items?: Item[];
+interface ItemRequest {
+  id: number | string;
+  title: string;
+  category: string;
+  description: string;
+  requester_id: string;
+  requester_name: string;
+  location: string;
+  status: 'open' | 'matched';
+  created_at: string;
+}
+
+interface ItemRequestsSectionProps {
   currentUser: User | null;
-  onRefresh: () => void;
   onShowAuthModal: () => void;
 }
 
-export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
-  rentals = [],
-  items = [],
+export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
   currentUser,
-  onRefresh,
   onShowAuthModal,
 }) => {
-  const [subTab, setSubTab] = useState<'rentals' | 'requests'>('rentals');
-  const [myRequests, setMyRequests] = useState<any[]>([]);
+  const [requests, setRequests] = useState<ItemRequest[]>([]);
+  const [isWriting, setIsWriting] = useState(false);
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('우산');
+  const [location, setLocation] = useState('동탄이마트 인근');
+  const [description, setDescription] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [proposingRequest, setProposingRequest] = useState<ItemRequest | null>(null);
+  const [offerPrice, setOfferPrice] = useState('1000');
+  const [offerMessage, setOfferMessage] = useState('');
 
   useEffect(() => {
-    if (currentUser && currentUser.role !== 'guest') {
-      fetchMyRequests();
-    }
-  }, [currentUser]);
+    fetchRequests();
+  }, []);
 
-  const fetchMyRequests = async () => {
+  const fetchRequests = async () => {
     try {
-      const supabase = (api as any).supabase;
-      if (supabase && currentUser) {
-        const { data, error } = await supabase
-          .from('item_requests')
-          .select('*')
-          .eq('requester_id', currentUser.id)
-          .order('created_at', { ascending: false });
-
-        if (!error && data) {
-          setMyRequests(data);
-        }
-      }
+      const data = await api.getItemRequests();
+      setRequests(data);
     } catch (err) {
-      console.error('Failed to fetch my requests:', err);
+      console.error('Failed to fetch requests:', err);
     }
   };
 
-  const safeRentals = Array.isArray(rentals) ? rentals : [];
-  const safeItems = Array.isArray(items) ? items : [];
-
-  const handleSimulateDeposit = async (rentalId: string | number) => {
-    try {
-      const supabase = (api as any).supabase;
-      if (supabase) {
-        await supabase
-          .from('rentals')
-          .update({ status: 'active', deposit_status: 'verified' })
-          .eq('id', rentalId);
-        onRefresh();
-        alert('보증금 입금이 확인되어 대여가 활성화되었습니다!');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('처리 중 오류가 발생했습니다.');
+  const handleCreateRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || currentUser.role === 'guest') {
+      onShowAuthModal();
+      return;
     }
-  };
 
-  const handleReturnItem = async (rentalId: string | number, itemId: string | number) => {
+    if (!title.trim()) {
+      alert('필요한 물품명을 입력해 주세요.');
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      const supabase = (api as any).supabase;
-      if (supabase) {
-        await supabase
-          .from('rentals')
-          .update({ status: 'returned', deposit_status: 'refunded' })
-          .eq('id', rentalId);
+      // 🚀 api 객체를 통해 DB로 데이터 저장 요청 보냄!
+      await api.createItemRequest({
+        title: title.trim(),
+        category,
+        location,
+        description: description.trim(),
+        requester_id: currentUser.id,
+        requester_name: currentUser.name || '에코멤버',
+      });
 
-        await supabase
-          .from('items')
-          .update({ status: 'available' })
-          .eq('id', itemId);
-
-        onRefresh();
-        alert('반납이 완료되어 보증금이 100% 정상 환급되었습니다!');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('반납 처리 중 오류가 발생했습니다.');
+      alert('물건 필요 요청이 성공적으로 DB에 등록되었습니다!');
+      setTitle('');
+      setDescription('');
+      setIsWriting(false);
+      fetchRequests();
+    } catch (err: any) {
+      console.error('Create request error:', err);
+      alert(`저장 실패: ${err?.message || '네트워크 상태를 확인해주세요.'}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      {/* 상단 헤더 및 서브 탭 */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-sm font-bold text-slate-900">나의 거래 및 요청 내역</h2>
-          <p className="text-xs text-slate-400">대여 현황과 내가 등록한 '빌려주세요' 수요 요청을 관리하세요.</p>
+    <div className="space-y-6">
+      <div className="bg-gradient-to-r from-slate-900 to-teal-950 text-white rounded-3xl p-6 md:p-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-xl">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-amber-400 bg-amber-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+              Wants Demand
+            </span>
+            <span className="text-xs text-slate-300">필요한 물품 수요 요청 공간</span>
+          </div>
+          <h2 className="text-base md:text-lg font-black tracking-tight">
+            "급하게 필요한 물건이 있다면 여기에 요청을 올려보세요!"
+          </h2>
+          <p className="text-xs text-slate-400">
+            이웃들이 보유한 물건을 확인하고 맞춤 대여를 제안해 드립니다.
+          </p>
         </div>
 
-        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl">
-          <button
-            onClick={() => setSubTab('rentals')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-              subTab === 'rentals' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            📦 물품 대여 내역 ({safeRentals.length})
-          </button>
-          <button
-            onClick={() => setSubTab('requests')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-              subTab === 'requests' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            🔍 빌려주세요 요청 내역 ({myRequests.length})
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            if (!currentUser || currentUser.role === 'guest') {
+              onShowAuthModal();
+            } else {
+              setIsWriting(!isWriting);
+            }
+          }}
+          className="px-5 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-2xl text-xs transition shadow-md cursor-pointer shrink-0"
+        >
+          {isWriting ? '목록으로 돌아가기' : '➕ 필요한 물건 신청하기'}
+        </button>
       </div>
 
-      {/* 1. 📦 물품 대여 내역 탭 */}
-      {subTab === 'rentals' && (
-        <div className="space-y-4">
-          {safeRentals.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 text-xs">
-              진행 중인 대여 거래 내역이 없습니다.
+      {isWriting && (
+        <form onSubmit={handleCreateRequest} className="bg-white rounded-3xl border border-slate-200 p-6 space-y-4 shadow-xs">
+          <h3 className="text-xs font-bold text-slate-900 border-b border-slate-100 pb-3">
+            📝 빌려주세요 요청서 작성
+          </h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700">필요한 물품명</label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="예: 캠핑용 타프 및 폴대 급히 구해요"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-amber-500 font-medium"
+                required
+              />
             </div>
-          ) : (
-            safeRentals.map((rental, idx) => {
-              const targetItem = safeItems.find((i) => String(i.id) === String(rental.item_id));
-              const isPending = rental.status === 'pending_deposit';
-              const isActive = rental.status === 'active';
-              const isReturned = rental.status === 'returned';
 
-              return (
-                <div key={rental.id || idx} className="bg-white rounded-3xl border border-slate-200 p-6 space-y-4 shadow-xs">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                    <span className="text-xs font-bold text-teal-700">대여증 #{rental.id}</span>
-                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                      isReturned ? 'bg-emerald-50 text-emerald-700' : isActive ? 'bg-teal-50 text-teal-700' : 'bg-amber-50 text-amber-700'
-                    }`}>
-                      {isReturned ? '반납 완료' : isActive ? '대여 중' : '입금 확인 대기'}
-                    </span>
-                  </div>
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700">희망 수령 위치 / 동네</label>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="예: 동탄이마트 인근"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-amber-500 font-medium"
+                required
+              />
+            </div>
+          </div>
 
-                  <div className="flex justify-between items-center text-xs">
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm">{targetItem?.title || '공유 물품'}</h4>
-                      <p className="text-slate-500 mt-0.5">📍 대여/반납 장소: {targetItem?.location || '공유 거점'}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-black text-slate-900">₩{(rental.price_paid || 1000).toLocaleString()}</span>
-                      <span className="text-[10px] text-slate-400 block">보증금 ₩{(rental.deposit || 10000).toLocaleString()}</span>
-                    </div>
-                  </div>
+          <div className="space-y-1 text-xs">
+            <label className="font-bold text-slate-700">상세 사연 및 대여 희망 기간</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder="어떤 용도로 필요한지 적어주세요."
+              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-amber-500 leading-relaxed"
+            ></textarea>
+          </div>
 
-                  {isPending && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex justify-between items-center text-xs">
-                      <span className="text-amber-900 font-medium">신한은행 110-5678-1234 (예금주: 에코링크)로 송금해주세요.</span>
-                      <button
-                        onClick={() => handleSimulateDeposit(rental.id)}
-                        className="px-4 py-2 bg-slate-900 text-white font-bold rounded-xl shadow-xs cursor-pointer"
-                      >
-                        입금 즉시 확인하기
-                      </button>
-                    </div>
-                  )}
-
-                  {isActive && (
-                    <div className="bg-teal-50 border border-teal-200 rounded-2xl p-4 flex justify-between items-center text-xs">
-                      <span className="text-teal-900 font-bold">🚀 정상 대여 중입니다. 사용 후 반납 버튼을 눌러주세요.</span>
-                      <button
-                        onClick={() => handleReturnItem(rental.id, rental.item_id)}
-                        className="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-xl shadow-xs cursor-pointer"
-                      >
-                        반납 및 보증금 환급 신청
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
+          <div className="flex justify-end pt-2">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-6 py-3 bg-slate-900 text-white font-bold rounded-2xl text-xs transition cursor-pointer"
+            >
+              {isSubmitting ? '등록 중...' : '빌려주세요 요청 올리기'}
+            </button>
+          </div>
+        </form>
       )}
 
-      {/* 2. 🔍 빌려주세요 요청 내역 탭 */}
-      {subTab === 'requests' && (
-        <div className="space-y-4">
-          {myRequests.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 text-xs">
-              내가 등록한 '빌려주세요' 수요 요청 내역이 없습니다.
-            </div>
-          ) : (
-            myRequests.map((req) => (
-              <div key={req.id} className="bg-white rounded-3xl border border-slate-200 p-6 space-y-3 shadow-xs">
-                <div className="flex justify-between items-center">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {requests.length === 0 ? (
+          <div className="col-span-full py-12 text-center bg-white rounded-3xl border border-slate-200 text-slate-400 text-xs font-medium">
+            등록된 '빌려주세요' 요청이 없습니다. 첫 번째 요청을 올려보세요!
+          </div>
+        ) : (
+          requests.map((req) => (
+            <div
+              key={req.id}
+              className="bg-white rounded-3xl p-5 border border-slate-200 flex flex-col justify-between shadow-xs hover:shadow-md transition space-y-4"
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
                   <span className="px-2.5 py-0.5 bg-amber-50 text-amber-700 rounded-md text-[10px] font-bold">
-                    🔍 내가 올린 수요 요청
+                    🔍 구하는 중 (수요)
                   </span>
-                  <span className="text-[10px] text-slate-400">📍 {req.location}</span>
+                  <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                    <Icons.MapPin size={11} /> {req.location}
+                  </span>
                 </div>
 
                 <h3 className="font-bold text-slate-900 text-sm">{req.title}</h3>
-                <p className="text-xs text-slate-500 leading-relaxed">{req.description || '상세 내용 없음'}</p>
-
-                <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-[11px] text-slate-400">
-                  <span>등록일시: {new Date(req.created_at).toLocaleString()}</span>
-                  <span className="text-teal-700 font-bold">이웃들의 제안 대기 중</span>
-                </div>
+                <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                  {req.description || '상세 설명이 없습니다.'}
+                </p>
               </div>
-            ))
-          )}
-        </div>
-      )}
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-400">
+                  요청자: {req.requester_name}
+                </span>
+
+                <button
+                  onClick={() => {
+                    if (!currentUser || currentUser.role === 'guest') {
+                      onShowAuthModal();
+                    } else {
+                      setProposingRequest(req);
+                    }
+                  }}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>🙋‍♂️ 내가 있어요!</span>
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 };
