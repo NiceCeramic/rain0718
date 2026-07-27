@@ -31,7 +31,7 @@ export function saveSupabaseConfig(url: string, anonKey: string) {
 }
 
 export function getKakaoAppKey(): string {
-  return localStorage.getItem(KAKAOS_KEY_KEY || KAKAO_KEY_KEY) || import.meta.env.VITE_KAKAO_APP_KEY || '';
+  return localStorage.getItem(KAKAO_KEY_KEY) || import.meta.env.VITE_KAKAO_APP_KEY || '';
 }
 
 export function saveKakaoAppKey(key: string) {
@@ -197,7 +197,7 @@ export const api = {
     return counts;
   },
 
-  // 5. 🔍 '빌려주세요' (Item Requests) 수요 요청 API (에러 해결 핵심)
+  // 5. 🔍 '빌려주세요' (Item Requests) 수요 요청 API
   async createItemRequest(request: {
     title: string;
     category: string;
