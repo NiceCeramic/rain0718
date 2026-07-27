@@ -16,7 +16,16 @@ interface BrowseFeedProps {
   onRefresh?: () => void;
 }
 
-type MainFeedMode = 'give' | 'want'; // '빌려줄게요' vs '빌려주세요' 모드
+type FilterType =
+  | 'all'
+  | 'green'
+  | 'want' // 🔍 '빌려주세요' 수요 요청 필터 추가
+  | 'umbrella'
+  | 'sunshade'
+  | 'battery'
+  | 'tools'
+  | 'electronics'
+  | 'etc';
 
 export const BrowseFeed: React.FC<BrowseFeedProps> = ({
   items = [],
@@ -30,11 +39,11 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
 }) => {
   const safeItems = Array.isArray(items) ? items : [];
 
-  const [feedMode, setFeedMode] = useState<MainFeedMode>('give'); // 탭 상태
-  const [requests, setRequests] = useState<any[]>([]); // '빌려주세요' 요청 목록
+  const [filter, setFilter] = useState<FilterType>('all');
+  const [requests, setRequests] = useState<any[]>([]); // '빌려주세요' 수요 요청 목록
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
-  const [proposingRequest, setProposingRequest] = useState<any | null>(null); // "내가 있어요" 제안 모달용
+  const [proposingRequest, setProposingRequest] = useState<any | null>(null);
   const [offerPrice, setOfferPrice] = useState('1000');
   const [offerMessage, setOfferMessage] = useState('');
   const [activeChatRoom, setActiveChatRoom] = useState<{
@@ -42,7 +51,6 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     itemTitle: string;
   } | null>(null);
 
-  // '빌려주세요' 데이터 불러오기
   useEffect(() => {
     fetchRequests();
   }, []);
@@ -99,7 +107,7 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
     setOfferMessage('');
   };
 
-  // 🎯 필터링된 공급 물품
+  // 🎯 거점 및 필터링 (공급 물품)
   const filteredItems = safeItems.filter((item) => {
     if (selectedHubId) {
       const targetName = (hubNamesMap[selectedHubId] || selectedHubId || '').trim().toLowerCase();
@@ -109,10 +117,17 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
       if (!isMatched) return false;
     }
 
+    const avStatus = (item as any).availability_status || 'green';
+
+    if (filter === 'green') {
+      if (avStatus !== 'green' || getRemainingStock(item) <= 0) return false;
+    }
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       return item.title.toLowerCase().includes(query) || (item.location || '').toLowerCase().includes(query);
     }
+
     return true;
   });
 
@@ -159,34 +174,15 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
 
   return (
     <div className="space-y-5">
-      {/* 🔄 [빌려줄게요] vs [빌려주세요] 메인 전환 탭 버튼 */}
-      <div className="flex items-center justify-between bg-white p-2 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-2 w-full">
-          <button
-            onClick={() => setFeedMode('give')}
-            className={`flex-1 py-3 px-4 rounded-xl font-bold text-xs transition cursor-pointer flex items-center justify-center gap-2 ${
-              feedMode === 'give'
-                ? 'bg-slate-900 text-white shadow-md'
-                : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span>📦 빌려줄게요 (공급 물품)</span>
-            <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full">{filteredItems.length}</span>
-          </button>
-
-          <button
-            onClick={() => setFeedMode('want')}
-            className={`flex-1 py-3 px-4 rounded-xl font-bold text-xs transition cursor-pointer flex items-center justify-center gap-2 ${
-              feedMode === 'want'
-                ? 'bg-amber-600 text-white shadow-md'
-                : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span>🔍 빌려주세요 (이웃의 수요 요청)</span>
-            <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full">{filteredRequests.length}</span>
-          </button>
+      {/* 📍 선택된 거점 안내 배너 */}
+      {selectedHubId && (
+        <div className="bg-teal-50 border border-teal-200 p-3.5 rounded-2xl flex items-center justify-between text-xs text-teal-900 font-bold">
+          <span>📍 선택하신 거점에 등록된 물품만 필터링되어 표시됩니다.</span>
+          <span className="text-[11px] text-teal-700 bg-teal-100/60 px-2.5 py-1 rounded-lg">
+            총 {filter === 'want' ? filteredRequests.length : filteredItems.length}개 항목
+          </span>
         </div>
-      </div>
+      )}
 
       {/* Search Bar */}
       <div className="relative">
@@ -197,80 +193,38 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={feedMode === 'give' ? "등록된 공유 자원이나 거점명을 검색해보세요..." : "이웃이 찾는 물품명을 검색해보세요..."}
+          placeholder={filter === 'want' ? "이웃이 찾는 물품명을 검색해보세요..." : "거점명, 대여 자원명 또는 모델명을 검색해보세요..."}
           className="w-full pl-11 pr-5 py-3 bg-white border border-slate-200 rounded-2xl text-xs focus:outline-none focus:border-teal-500 shadow-xs transition"
         />
       </div>
 
-      {/* 📦 1. 빌려줄게요 (공급 물품 피드) */}
-      {feedMode === 'give' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredItems.length === 0 ? (
-            <div className="col-span-full bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-500">
-              <p className="text-xs font-bold">조건에 일치하는 공급 자원이 없습니다.</p>
-            </div>
-          ) : (
-            filteredItems.map((item) => {
-              const avStatus = (item as any).availability_status || 'green';
-              const remainingStock = getRemainingStock(item);
-              const isRed = avStatus === 'red' || remainingStock <= 0;
+      {/* Filter Chip Bar: '지금 빌려줄 수 있음' 옆에 '빌려주세요'가 나란히 배치됨 */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {[
+          { id: 'all', label: '전체' },
+          { id: 'green', label: '🟢 지금 빌려줄 수 있음' },
+          { id: 'want', label: '🔍 빌려주세요 (수요)' }, // 👈 나란히 배치된 빌려주세요 버튼
+          { id: 'umbrella', label: '☔ 우산' },
+          { id: 'sunshade', label: '☀️ 양산' },
+          { id: 'battery', label: '🔋 보조배터리' },
+          { id: 'tools', label: '🛠 공구/생활' },
+        ].map((chip) => (
+          <button
+            key={chip.id}
+            onClick={() => setFilter(chip.id as FilterType)}
+            className={`px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+              filter === chip.id
+                ? chip.id === 'want' ? 'bg-amber-600 text-white shadow-md' : 'bg-slate-900 text-white shadow-md'
+                : 'bg-white border border-slate-200 text-slate-600 hover:border-teal-500 hover:text-[#0f766e]'
+            }`}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
 
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => setSelectedItem(item)}
-                  className={`bg-white rounded-3xl p-5 border border-slate-200 flex flex-col shadow-xs hover:shadow-md transition-all cursor-pointer group relative ${
-                    isRed ? 'opacity-70' : ''
-                  }`}
-                >
-                  <div className="absolute top-4 right-4 z-10">
-                    {renderStatusBadge(avStatus)}
-                  </div>
-
-                  <div className="w-full aspect-video bg-teal-50/40 rounded-2xl mb-4 flex items-center justify-center group-hover:scale-95 transition-transform overflow-hidden">
-                    {renderItemThumbnail(item.category, item.color)}
-                  </div>
-
-                  <h3 className="font-bold text-slate-900 text-sm truncate group-hover:text-teal-700 transition mb-2">
-                    {item.title}
-                  </h3>
-
-                  <p className="text-xs text-slate-500 mb-4 flex items-center gap-1">
-                    <Icons.MapPin size={12} className="text-slate-400" />
-                    <span className="truncate">{item.location || (item as any).hub_name}</span>
-                  </p>
-
-                  <div className="mt-auto flex items-center justify-between border-t border-slate-200 pt-3">
-                    <span className="text-sm font-black text-slate-800">
-                      ₩{(item.price || 1000).toLocaleString()} <span className="text-[10px] font-normal text-slate-400">/ 건</span>
-                    </span>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!currentUser || currentUser.role === 'guest') {
-                          onShowAuthModal();
-                        } else {
-                          api.getOrCreateChatRoom(item.id, currentUser.id, (item as any).owner_id || 'dummy').then(room => {
-                            if (room) setActiveChatRoom({ roomId: room.id, itemTitle: item.title });
-                          });
-                        }
-                      }}
-                      className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-[#0f766e] border border-teal-200 text-xs font-bold rounded-xl transition flex items-center gap-1"
-                    >
-                      <Icons.MessageSquare size={13} />
-                      <span>문의</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {/* 🔍 2. 빌려주세요 (이웃의 수요 요청 피드) */}
-      {feedMode === 'want' && (
+      {/* 🔍 '빌려주세요' 필터를 선택했을 때 렌더링되는 수요 요청 카드 피드 */}
+      {filter === 'want' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredRequests.length === 0 ? (
             <div className="col-span-full bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-500">
@@ -320,9 +274,89 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
             ))
           )}
         </div>
+      ) : (
+        /* 📦 일반 공급 물품 피드 (전체, 지금 빌려줄 수 있음, 카테고리별) */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredItems.length === 0 ? (
+            <div className="col-span-full bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-500">
+              <p className="text-xs font-bold">조건에 일치하는 공유 자원이 없습니다.</p>
+            </div>
+          ) : (
+            filteredItems.map((item) => {
+              const avStatus = (item as any).availability_status || 'green';
+              const remainingStock = getRemainingStock(item);
+              const isRed = avStatus === 'red' || remainingStock <= 0;
+
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => setSelectedItem(item)}
+                  className={`bg-white rounded-3xl p-5 border border-slate-200 flex flex-col shadow-xs hover:shadow-md hover:border-slate-300 transition-all cursor-pointer group relative ${
+                    isRed ? 'opacity-70' : ''
+                  }`}
+                >
+                  <div className="absolute top-4 right-4 z-10">
+                    {renderStatusBadge(avStatus)}
+                  </div>
+
+                  <div className="w-full aspect-video bg-teal-50/40 rounded-2xl mb-4 flex items-center justify-center group-hover:scale-95 transition-transform overflow-hidden">
+                    {renderItemThumbnail(item.category, item.color)}
+                  </div>
+
+                  <div className="flex justify-between items-start mb-2 gap-2">
+                    <h3 className="font-bold text-slate-900 text-sm truncate group-hover:text-teal-700 transition">
+                      {item.title}
+                    </h3>
+                  </div>
+
+                  <p className="text-xs text-slate-500 mb-4 flex items-center gap-1">
+                    <Icons.MapPin size={12} className="text-slate-400" />
+                    <span className="truncate">{item.location || (item as any).hub_name}</span>
+                  </p>
+
+                  <div className="mt-auto flex items-center justify-between border-t border-slate-200 pt-3">
+                    <div>
+                      <span className="text-sm font-black text-slate-800">
+                        ₩{(item.price || 1000).toLocaleString()}{' '}
+                        <span className="text-[10px] font-normal text-slate-400 uppercase">/ 건</span>
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!currentUser || currentUser.role === 'guest') {
+                          onShowAuthModal();
+                          return;
+                        }
+                        const sellerId = (item as any).owner_id || (item as any).user_id || 'seller-dummy-id';
+                        if (sellerId === currentUser.id) {
+                          setSelectedItem(item);
+                          return;
+                        }
+                        try {
+                          const room = await (api as any).getOrCreateChatRoom(item.id, currentUser.id, sellerId);
+                          if (room) {
+                            setActiveChatRoom({ roomId: room.id, itemTitle: item.title });
+                          }
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-[#0f766e] border border-teal-200 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <Icons.MessageSquare size={13} />
+                      <span>문의</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
       )}
 
-      {/* 공급 물품 상세 모달 */}
+      {/* Detail Modal */}
       <AnimatePresence>
         {selectedItem && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
@@ -348,7 +382,9 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
               <div className="p-6 text-xs space-y-4">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] text-slate-500 font-bold">📍 {selectedItem.location}</span>
+                    <span className="text-[10px] text-slate-500 font-bold">
+                      📍 {selectedItem.location || (selectedItem as any).hub_name}
+                    </span>
                     {renderStatusBadge((selectedItem as any).availability_status || 'green')}
                   </div>
                   <h2 className="text-base font-bold text-slate-900">{selectedItem.title}</h2>
@@ -356,11 +392,11 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
 
                 {currentUser && currentUser.id === ((selectedItem as any).owner_id || (selectedItem as any).user_id) && (
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
-                    <span className="font-bold text-slate-800 block">🎛️ 실시간 상태 변경 제어</span>
+                    <span className="font-bold text-slate-800 block">🎛️ 공급자 실시간 상태 변경 제어</span>
                     <div className="grid grid-cols-3 gap-2">
-                      <button onClick={(e) => handleUpdateAvailability(selectedItem.id, 'green', e)} className="py-2 bg-emerald-100 text-emerald-800 font-bold rounded-xl">🟢 지금 가능</button>
-                      <button onClick={(e) => handleUpdateAvailability(selectedItem.id, 'yellow', e)} className="py-2 bg-amber-100 text-amber-800 font-bold rounded-xl">🟡 오늘 저녁</button>
-                      <button onClick={(e) => handleUpdateAvailability(selectedItem.id, 'red', e)} className="py-2 bg-rose-100 text-rose-800 font-bold rounded-xl">🔴 이용 불가</button>
+                      <button onClick={(e) => handleUpdateAvailability(selectedItem.id, 'green', e)} className="py-2 bg-emerald-100 text-emerald-800 font-bold rounded-xl cursor-pointer">🟢 지금 가능</button>
+                      <button onClick={(e) => handleUpdateAvailability(selectedItem.id, 'yellow', e)} className="py-2 bg-amber-100 text-amber-800 font-bold rounded-xl cursor-pointer">🟡 오늘 저녁</button>
+                      <button onClick={(e) => handleUpdateAvailability(selectedItem.id, 'red', e)} className="py-2 bg-rose-100 text-rose-800 font-bold rounded-xl cursor-pointer">🔴 이용 불가</button>
                     </div>
                   </div>
                 )}
@@ -373,10 +409,10 @@ export const BrowseFeed: React.FC<BrowseFeedProps> = ({
                   onClick={() => {
                     if (!currentUser || currentUser.role === 'guest') {
                       onShowAuthModal();
-                    } else {
-                      onRent(selectedItem);
-                      setSelectedItem(null);
+                      return;
                     }
+                    onRent(selectedItem);
+                    setSelectedItem(null);
                   }}
                   className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-md cursor-pointer"
                 >
