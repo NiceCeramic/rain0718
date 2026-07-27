@@ -29,16 +29,12 @@ export default function App() {
   const [kakaoAppKey, setKakaoAppKey] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
 
-  // 💬 채팅 목록 모달 열림 상태 관리
   const [isChatListOpen, setIsChatListOpen] = useState(false);
-
-  // 💬 글로벌 개별 1:1 대화 모달 상태 관리
   const [activeChatRoom, setActiveChatRoom] = useState<{
     roomId: string;
     itemTitle: string;
   } | null>(null);
 
-  // Initialize: 캐시된 사용자 정보 및 Supabase 설정 확인
   useEffect(() => {
     const cachedUser = localStorage.getItem('ecolink_cached_user');
     if (cachedUser) {
@@ -63,7 +59,6 @@ export default function App() {
     setKakaoAppKey(getKakaoAppKey());
   }, []);
 
-  // Supabase 세션 감지 및 자동 로그인 로직
   useEffect(() => {
     if (!isConfiguredSupabase) return;
 
@@ -267,8 +262,6 @@ export default function App() {
     return acc;
   }, {} as Record<string, string>);
 
-  const co2Reduced = items.filter(i => i.status === 'rented').length * 1.8 + (rentals.filter(r => r.status === 'returned').length * 2.4);
-  const totalRentCount = rentals.length;
   const shouldShowAuthGate = !currentUser || isAuthModalOpen;
 
   return (
@@ -348,7 +341,7 @@ export default function App() {
               <span className="text-[9px] font-mono text-amber-600 bg-amber-50 px-1 py-0.5 rounded">수요</span>
             </button>
 
-            {/* 🎁 출석체크 탭 */}
+            {/* 🎁 출석체크 탭 추가됨 */}
             <button
               onClick={() => {
                 if (!currentUser || currentUser.role === 'guest') {
