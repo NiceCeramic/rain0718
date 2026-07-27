@@ -7,12 +7,13 @@ import { MapSection } from './components/MapSection';
 import { BrowseFeed } from './components/BrowseFeed';
 import { ConsignmentForm } from './components/ConsignmentForm';
 import { ItemRequestsSection } from './components/ItemRequestsSection';
+import { AttendanceSection } from './components/AttendanceSection';
 import { TransactionsSection } from './components/TransactionsSection';
 import { SettingsModal } from './components/SettingsModal';
 import { ChatModal } from './components/ChatModal';
 import { ChatListModal } from './components/ChatListModal';
 
-type ActiveTab = 'browse' | 'consignment' | 'requests' | 'transactions';
+type ActiveTab = 'browse' | 'consignment' | 'requests' | 'attendance' | 'transactions';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -305,7 +306,7 @@ export default function App() {
               </span>
             </button>
 
-            {/* 내 물건 위탁 (공급자) */}
+            {/* 내 물건 위탁 (공급) */}
             <button
               onClick={() => {
                 if (!currentUser || currentUser.role === 'guest') {
@@ -327,7 +328,7 @@ export default function App() {
               <span className="text-[9px] font-mono text-teal-600 bg-teal-50 px-1 py-0.5 rounded">공급</span>
             </button>
 
-            {/* 빌려주세요 (수요자 요청) */}
+            {/* 빌려주세요 (수요) */}
             <button
               onClick={() => {
                 if (!currentUser || currentUser.role === 'guest') {
@@ -345,6 +346,28 @@ export default function App() {
                 빌려주세요
               </span>
               <span className="text-[9px] font-mono text-amber-600 bg-amber-50 px-1 py-0.5 rounded">수요</span>
+            </button>
+
+            {/* 🎁 출석체크 탭 */}
+            <button
+              onClick={() => {
+                if (!currentUser || currentUser.role === 'guest') {
+                  setIsAuthModalOpen(true);
+                } else {
+                  setActiveTab('attendance');
+                }
+              }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'attendance' ? 'bg-teal-50 text-[#0f766e]' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              <span className="flex items-center gap-3">
+                <Icons.Check size={16} />
+                출석체크
+              </span>
+              <span className="text-[9px] font-mono text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-bold">
+                ECO+
+              </span>
             </button>
 
             <button
@@ -391,13 +414,13 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <p className="text-[10px] opacity-60 font-semibold">에코멤버</p>
                 <span className="text-[10px] bg-teal-500/20 text-teal-300 font-bold px-2 py-0.5 rounded-full">
-                  🌿 ECO (새싹)
+                  🌿 새싹 (ECO 120)
                 </span>
               </div>
               <p className="font-bold text-xs truncate">{currentUser.name} 님</p>
-              <div className="flex items-center justify-between text-[10px]">
-                <span className="text-teal-400 font-bold">ECO 점수 120점</span>
-                <span className="opacity-60">LV.2</span>
+              <div className="flex items-center justify-between text-[10px] pt-1 border-t border-slate-800">
+                <span className="text-teal-400 font-bold">공유 기여도 120점</span>
+                <span className="opacity-60 text-amber-300">보증금 10% 할인</span>
               </div>
             </div>
           ) : (
@@ -495,6 +518,13 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'attendance' && (
+            <AttendanceSection 
+              currentUser={currentUser} 
+              onShowAuthModal={() => setIsAuthModalOpen(true)} 
+            />
+          )}
+
           {activeTab === 'transactions' && (
             <TransactionsSection 
               rentals={rentals} 
@@ -549,15 +579,15 @@ export default function App() {
             if (!currentUser || currentUser.role === 'guest') {
               setIsAuthModalOpen(true);
             } else {
-              setActiveTab('requests');
+              setActiveTab('attendance');
             }
           }}
           className={`flex flex-col items-center gap-1 cursor-pointer transition ${
-            activeTab === 'requests' ? 'text-teal-700 font-bold' : 'text-slate-400 font-medium'
+            activeTab === 'attendance' ? 'text-teal-700 font-bold' : 'text-slate-400 font-medium'
           }`}
         >
-          <Icons.Search size={18} />
-          <span className="text-[10px]">빌려주세요</span>
+          <Icons.Check size={18} />
+          <span className="text-[10px]">출석체크</span>
         </button>
 
         <button
