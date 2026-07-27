@@ -305,7 +305,7 @@ export default function App() {
               </span>
             </button>
 
-            {/* 1️⃣ 내 물건 위탁 (공급자: 빌려주기) */}
+            {/* 내 물건 위탁 (공급자) */}
             <button
               onClick={() => {
                 if (!currentUser || currentUser.role === 'guest') {
@@ -327,7 +327,7 @@ export default function App() {
               <span className="text-[9px] font-mono text-teal-600 bg-teal-50 px-1 py-0.5 rounded">공급</span>
             </button>
 
-            {/* 2️⃣ 빌려주세요 (수요자: 구인/요청) */}
+            {/* 빌려주세요 (수요자 요청) */}
             <button
               onClick={() => {
                 if (!currentUser || currentUser.role === 'guest') {
@@ -387,12 +387,17 @@ export default function App() {
 
         <div className="pt-6 border-t border-slate-100">
           {currentUser && currentUser.role !== 'guest' ? (
-            <div className="p-4 bg-slate-900 rounded-2xl text-white">
-              <p className="text-[10px] opacity-60 mb-1 font-semibold">에코멤버</p>
-              <p className="font-bold mb-3 text-xs truncate">{currentUser.name} 님</p>
+            <div className="p-4 bg-slate-900 rounded-2xl text-white space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] opacity-60 font-semibold">에코멤버</p>
+                <span className="text-[10px] bg-teal-500/20 text-teal-300 font-bold px-2 py-0.5 rounded-full">
+                  🌿 ECO (새싹)
+                </span>
+              </div>
+              <p className="font-bold text-xs truncate">{currentUser.name} 님</p>
               <div className="flex items-center justify-between text-[10px]">
-                <span className="text-teal-400 font-bold">매너 온도 42°C</span>
-                <span className="opacity-60">LV.3</span>
+                <span className="text-teal-400 font-bold">ECO 점수 120점</span>
+                <span className="opacity-60">LV.2</span>
               </div>
             </div>
           ) : (
