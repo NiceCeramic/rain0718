@@ -6,7 +6,6 @@ import { Icons } from './Icons';
 interface AttendanceSectionProps {
   currentUser: User | null;
   onShowAuthModal: () => void;
-  onRefreshUser?: () => void;
 }
 
 export const AttendanceSection: React.FC<AttendanceSectionProps> = ({
@@ -33,7 +32,7 @@ export const AttendanceSection: React.FC<AttendanceSectionProps> = ({
         .from('user_attendances')
         .select('*')
         .eq('user_id', currentUser.id)
-        .single();
+        .maybeSingle();
 
       if (data) {
         setStreakCount(data.streak_count || 0);
@@ -45,7 +44,7 @@ export const AttendanceSection: React.FC<AttendanceSectionProps> = ({
         }
       }
     } catch (err) {
-      // 데이터가 없는 경우 무시
+      console.error('Fetch attendance error:', err);
     }
   };
 
@@ -56,14 +55,18 @@ export const AttendanceSection: React.FC<AttendanceSectionProps> = ({
     }
 
     if (isCheckedToday) {
-      alert('오늘 이미 출석체크를 완료하셨습니다! 내일 또 방문해주세요.');
+      alert('오늘 이미 출석체크를 완료하셨습니다!');
       return;
     }
 
     setLoading(true);
     try {
       const supabase = (api as any).supabase;
-      if (!supabase) return;
+      if (!supabase) {
+        alert('Supabase 클라이언트가 연결되지 않았습니다. 환경설정을 확인해주세요.');
+        setLoading(false);
+        return;
+      }
 
       const todayStr = new Date().toISOString().split('T')[0];
       const yesterday = new Date();
@@ -75,14 +78,15 @@ export const AttendanceSection: React.FC<AttendanceSectionProps> = ({
         .from('user_attendances')
         .select('*')
         .eq('user_id', currentUser.id)
-        .single();
+        .maybeSingle();
 
       let newStreak = 1;
-      if (existing) {
+      if (existing && existing.last_check_date) {
         if (existing.last_check_date === yesterdayStr) {
           newStreak = (existing.streak_count || 0) + 1;
         } else if (existing.last_check_date === todayStr) {
           setIsCheckedToday(true);
+          alert('오늘 이미 출석체크를 완료하셨습니다!');
           setLoading(false);
           return;
         }
@@ -90,8 +94,8 @@ export const AttendanceSection: React.FC<AttendanceSectionProps> = ({
 
       const newTotal = (existing?.total_check_count || 0) + 1;
 
-      // 출석 테이블 업서트
-      await supabase.from('user_attendances').upsert({
+      // 1. 출석 테이블 저장
+      const { error: attError } = await supabase.from('user_attendances').upsert({
         user_id: currentUser.id,
         last_check_date: todayStr,
         streak_count: newStreak,
@@ -99,20 +103,21 @@ export const AttendanceSection: React.FC<AttendanceSectionProps> = ({
         updated_at: new Date().toISOString(),
       });
 
-      // ECO 점수 지급 (기본 출석 +10점, 7일 연속 시 +20점 보너스)
+      if (attError) throw attError;
+
+      // 2. ECO 점수 지급 (기본 +10점)
       let earnedEco = 10;
       if (newStreak > 0 && newStreak % 7 === 0) {
         earnedEco += 20; // 7일 연속 보너스
       }
 
-      // user_ecos 테이블 업데이트 (점수 누적)
       const { data: ecoData } = await supabase
         .from('user_ecos')
         .select('*')
         .eq('user_id', currentUser.id)
-        .single();
+        .maybeSingle();
 
-      const currentScore = ecoData?.eco_score || 120; // 기본값
+      const currentScore = ecoData?.eco_score || 120;
       const updatedScore = currentScore + earnedEco;
 
       await supabase.from('user_ecos').upsert({
@@ -125,10 +130,10 @@ export const AttendanceSection: React.FC<AttendanceSectionProps> = ({
       setStreakCount(newStreak);
       setTotalCount(newTotal);
 
-      alert(`🎉 출석체크 완료! ECO +${earnedEco}점이 적립되었습니다. (현재 연속 ${newStreak}일째 출석 중)`);
-    } catch (err) {
-      console.error('Attendance check-in error:', err);
-      alert('출석체크 중 오류가 발생했습니다.');
+      alert(`🎉 출석체크 완료! ECO +${earnedEco}점이 적립되었습니다. (연속 ${newStreak}일째)`);
+    } catch (err: any) {
+      console.error('Check-in execution error:', err);
+      alert(`출석체크 중 오류가 발생했습니다: ${err?.message || '테이블 생성 여부를 확인해주세요.'}`);
     } finally {
       setLoading(false);
     }
