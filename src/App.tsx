@@ -6,12 +6,13 @@ import { AuthGate } from './components/AuthGate';
 import { MapSection } from './components/MapSection';
 import { BrowseFeed } from './components/BrowseFeed';
 import { ConsignmentForm } from './components/ConsignmentForm';
+import { ItemRequestsSection } from './components/ItemRequestsSection';
 import { TransactionsSection } from './components/TransactionsSection';
 import { SettingsModal } from './components/SettingsModal';
 import { ChatModal } from './components/ChatModal';
 import { ChatListModal } from './components/ChatListModal';
 
-type ActiveTab = 'browse' | 'consignment' | 'transactions';
+type ActiveTab = 'browse' | 'consignment' | 'requests' | 'transactions';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -207,7 +208,6 @@ export default function App() {
     showToast('안전하게 로그아웃되었습니다.');
   };
 
-  // 💬 사이드바 / 하단 바 1:1 대화 메뉴 클릭 핸들러
   const handleOpenGeneralChat = () => {
     if (!currentUser || currentUser.role === 'guest') {
       setIsAuthModalOpen(true);
@@ -246,14 +246,7 @@ export default function App() {
       showToast('🚀 대여가 정상 신청되었습니다. 이체 정보 확인 단계를 진행해주세요.');
     } catch (err: any) {
       console.error('Failed to rent item', err);
-      const dbMessage: string | undefined = err?.message;
-      const isSoldOut = dbMessage?.includes('모두 대여 중');
-      showToast(
-        isSoldOut
-          ? '😢 죄송해요, 방금 재고가 모두 소진되었습니다.'
-          : '대여 신청 중 오류가 발생했습니다.',
-        'info'
-      );
+      showToast('대여 신청 중 오류가 발생했습니다.', 'info');
       loadData();
     }
   };
@@ -275,7 +268,6 @@ export default function App() {
 
   const co2Reduced = items.filter(i => i.status === 'rented').length * 1.8 + (rentals.filter(r => r.status === 'returned').length * 2.4);
   const totalRentCount = rentals.length;
-
   const shouldShowAuthGate = !currentUser || isAuthModalOpen;
 
   return (
@@ -313,7 +305,7 @@ export default function App() {
               </span>
             </button>
 
-            {/* 🏷️ 명칭 변경: '빌려주세요' (내 물건 위탁) */}
+            {/* 1️⃣ 내 물건 위탁 (공급자: 빌려주기) */}
             <button
               onClick={() => {
                 if (!currentUser || currentUser.role === 'guest') {
@@ -330,9 +322,29 @@ export default function App() {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
                 </svg>
+                내 물건 위탁
+              </span>
+              <span className="text-[9px] font-mono text-teal-600 bg-teal-50 px-1 py-0.5 rounded">공급</span>
+            </button>
+
+            {/* 2️⃣ 빌려주세요 (수요자: 구인/요청) */}
+            <button
+              onClick={() => {
+                if (!currentUser || currentUser.role === 'guest') {
+                  setIsAuthModalOpen(true);
+                } else {
+                  setActiveTab('requests');
+                }
+              }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'requests' ? 'bg-teal-50 text-[#0f766e]' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              <span className="flex items-center gap-3">
+                <Icons.Search size={16} />
                 빌려주세요
               </span>
-              <span className="text-[9px] font-mono text-teal-600 bg-teal-50 px-1 py-0.5 rounded">C2C</span>
+              <span className="text-[9px] font-mono text-amber-600 bg-amber-50 px-1 py-0.5 rounded">수요</span>
             </button>
 
             <button
@@ -358,7 +370,6 @@ export default function App() {
               )}
             </button>
 
-            {/* 💬 사이드바 1:1 대여 문의 채팅 목록 탭 */}
             <button
               onClick={handleOpenGeneralChat}
               className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-all cursor-pointer"
@@ -382,9 +393,6 @@ export default function App() {
               <div className="flex items-center justify-between text-[10px]">
                 <span className="text-teal-400 font-bold">매너 온도 42°C</span>
                 <span className="opacity-60">LV.3</span>
-              </div>
-              <div className="w-full bg-white/10 h-1 rounded-full mt-2">
-                <div className="w-[42%] bg-teal-400 h-full rounded-full"></div>
               </div>
             </div>
           ) : (
@@ -416,20 +424,15 @@ export default function App() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsSettingsOpen(true)}
-              className={`px-3 py-1 rounded-full text-[10px] font-bold border transition flex items-center gap-1.5 cursor-pointer ${
-                isConfiguredSupabase
-                  ? 'bg-emerald-50 border-emerald-100 text-emerald-800'
-                  : 'bg-amber-50 border-amber-100 text-amber-800 hover:bg-amber-100/50'
-              }`}
+              className="px-3 py-1 rounded-full text-[10px] font-bold border transition flex items-center gap-1.5 bg-emerald-50 border-emerald-100 text-emerald-800 cursor-pointer"
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${isConfiguredSupabase ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
-              <span className="hidden sm:inline">환경설정</span>
-              <span className="sm:hidden">설정</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>환경설정</span>
             </button>
 
             {currentUser && (
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs" title={`${currentUser.name} 님`}>
+                <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs">
                   {currentUser.name.slice(0, 1)}
                 </div>
                 <button
@@ -480,6 +483,13 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'requests' && (
+            <ItemRequestsSection 
+              currentUser={currentUser} 
+              onShowAuthModal={() => setIsAuthModalOpen(true)} 
+            />
+          )}
+
           {activeTab === 'transactions' && (
             <TransactionsSection 
               rentals={rentals} 
@@ -490,54 +500,10 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'browse' && (
-            <div className="bg-slate-900 text-white rounded-3xl p-6 md:p-8 relative mt-4 shadow-xl border border-slate-800">
-              <div className="absolute top-4 right-6 w-2.5 h-2.5 bg-teal-400 rounded-full shadow-[0_0_12px_rgba(45,212,191,0.8)] animate-pulse"></div>
-
-              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-teal-400 tracking-wider uppercase">에코 시너지 리포트</span>
-                    <span className="bg-teal-500/20 text-teal-300 text-[10px] px-2 py-0.5 rounded-full font-mono">LIVE</span>
-                  </div>
-                  <p className="text-sm text-slate-300 font-medium">
-                    공유 자원을 함께 쓰는 동네 연대 행동이 지구를 살립니다.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-6 md:gap-8 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-800 w-full lg:w-auto">
-                  <div>
-                    <p className="text-[11px] text-slate-400 font-medium mb-1">CO2 절감 기여량</p>
-                    <p className="text-2xl font-black font-mono text-white tracking-tight">
-                      {co2Reduced.toFixed(1)} <span className="text-sm font-normal text-teal-400">kg</span>
-                    </p>
-                  </div>
-
-                  <div className="border-l border-slate-800 pl-6 md:pl-8">
-                    <p className="text-[11px] text-slate-400 font-medium mb-1">누적 자원 순환</p>
-                    <p className="text-2xl font-black font-mono text-white tracking-tight">
-                      {totalRentCount} <span className="text-sm font-normal text-teal-400">회</span>
-                    </p>
-                  </div>
-
-                  <div className="border-l border-slate-800 pl-6 md:pl-8">
-                    <p className="text-[11px] text-slate-400 font-medium mb-1">대여 가능 물건</p>
-                    <p className="text-2xl font-black font-mono text-white tracking-tight">
-                      {items.filter(i => i.status === 'available').length} <span className="text-sm font-normal text-teal-400">개</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           <footer className="py-8 text-center text-xs text-slate-400 border-t border-slate-200/50 mt-12 shrink-0">
             <p className="font-semibold text-slate-500">🌿 에코링크 (EcoLink) 친환경 동네 연대</p>
             <p className="mt-1 leading-relaxed max-w-md mx-auto text-[11px]">
               "필요한 시간만큼 빌려 쓰는 합리적인 소비 생활, 내 동네에서 시작됩니다."
-            </p>
-            <p className="mt-3 font-mono text-[9px]">
-              © {new Date().getFullYear()} EcoLink. Built with React & Supabase.
             </p>
           </footer>
         </section>
@@ -555,7 +521,6 @@ export default function App() {
           <span className="text-[10px]">둘러보기</span>
         </button>
 
-        {/* 🏷️ 모바일 하단바 명칭 변경: '빌려주세요' */}
         <button
           onClick={() => {
             if (!currentUser || currentUser.role === 'guest') {
@@ -569,8 +534,24 @@ export default function App() {
           }`}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2_2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
           </svg>
+          <span className="text-[10px]">내 물건 위탁</span>
+        </button>
+
+        <button
+          onClick={() => {
+            if (!currentUser || currentUser.role === 'guest') {
+              setIsAuthModalOpen(true);
+            } else {
+              setActiveTab('requests');
+            }
+          }}
+          className={`flex flex-col items-center gap-1 cursor-pointer transition ${
+            activeTab === 'requests' ? 'text-teal-700 font-bold' : 'text-slate-400 font-medium'
+          }`}
+        >
+          <Icons.Search size={18} />
           <span className="text-[10px]">빌려주세요</span>
         </button>
 
@@ -588,69 +569,18 @@ export default function App() {
         >
           <Icons.History size={18} />
           <span className="text-[10px]">거래내역</span>
-          {rentals.filter(r => r.status === 'pending_deposit' || r.status === 'active').length > 0 && (
-            <span className="absolute -top-1 right-2 w-2 h-2 bg-rose-500 rounded-full"></span>
-          )}
-        </button>
-
-        {/* 💬 모바일 전용 1:1 대화 버튼 */}
-        <button
-          onClick={handleOpenGeneralChat}
-          className="flex flex-col items-center gap-1 cursor-pointer transition text-slate-400 font-medium hover:text-teal-700"
-        >
-          <Icons.MessageSquare size={18} />
-          <span className="text-[10px]">1:1 대화</span>
         </button>
       </nav>
 
-      {/* Toast Notification */}
-      {toast && (
-        <div className="fixed top-20 right-4 z-50 animate-fadeIn">
-          <div className="px-5 py-3.5 rounded-2xl shadow-xl text-xs font-semibold flex items-center gap-2 border bg-slate-900 border-slate-800 text-white">
-            <Icons.Check size={14} className="text-teal-400" />
-            <span>{toast.message}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Settings Modal */}
-      {isSettingsOpen && (
-        <SettingsModal 
-          onClose={() => setIsSettingsOpen(false)} 
-          onConfigChanged={handleConfigChange} 
-        />
-      )}
-
-      {/* Auth Gate Modal */}
-      {shouldShowAuthGate && (
-        <AuthGate 
-          onLogin={handleLogin} 
-          onContinueAsGuest={handleContinueAsGuest} 
-        />
-      )}
-
-      {/* 💬 1. 당근마켓 스타일 전체 1:1 대여 채팅 목록 모달 */}
+      {/* Modals */}
+      {isSettingsOpen && <SettingsModal onClose={() => setIsSettingsOpen(false)} onConfigChanged={handleConfigChange} />}
+      {shouldShowAuthGate && <AuthGate onLogin={handleLogin} onContinueAsGuest={handleContinueAsGuest} />}
       {isChatListOpen && currentUser && (
-        <ChatListModal
-          currentUserId={currentUser.id}
-          onClose={() => setIsChatListOpen(false)}
-          onSelectRoom={(room) => {
-            setIsChatListOpen(false);
-            setActiveChatRoom({ roomId: room.id, itemTitle: room.itemTitle });
-          }}
-        />
+        <ChatListModal currentUserId={currentUser.id} onClose={() => setIsChatListOpen(false)} onSelectRoom={(room) => { setIsChatListOpen(false); setActiveChatRoom({ roomId: room.id, itemTitle: room.itemTitle }); }} />
       )}
-
-      {/* 💬 2. 개별 실시간 1:1 대화 모달 팝업 */}
       {activeChatRoom && currentUser && (
-        <ChatModal
-          roomId={activeChatRoom.roomId}
-          itemTitle={activeChatRoom.itemTitle}
-          currentUserId={currentUser.id}
-          onClose={() => setActiveChatRoom(null)}
-        />
+        <ChatModal roomId={activeChatRoom.roomId} itemTitle={activeChatRoom.itemTitle} currentUserId={currentUser.id} onClose={() => setActiveChatRoom(null)} />
       )}
-
     </div>
   );
 }
