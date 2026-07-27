@@ -32,7 +32,7 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 제안 모달 상태 ("내가 있어요" 버튼 클릭 시)
+  // "내가 있어요" 제안 모달
   const [proposingRequest, setProposingRequest] = useState<ItemRequest | null>(null);
   const [offerPrice, setOfferPrice] = useState('1000');
   const [offerMessage, setOfferMessage] = useState('');
@@ -74,7 +74,7 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
     try {
       const supabase = (api as any).supabase;
       if (supabase) {
-        await supabase.from('item_requests').insert({
+        const { error } = await supabase.from('item_requests').insert({
           title: title.trim(),
           category,
           location,
@@ -83,15 +83,18 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
           requester_name: currentUser.name,
           status: 'open',
         });
+
+        if (error) throw error;
       }
-      alert('물건 필요 요청이 등록되었습니다! 주변 2km 이웃들에게 노출됩니다.');
+
+      alert('물건 필요 요청이 "빌려주세요" 탭에 성공적으로 등록되었습니다!');
       setTitle('');
       setDescription('');
       setIsWriting(false);
       fetchRequests();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Create request error:', err);
-      alert('등록 중 오류가 발생했습니다.');
+      alert(`등록 실패: ${err?.message || '입력값을 확인해 주세요.'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -105,27 +108,27 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
     }
     if (!proposingRequest) return;
 
-    alert(`🚀 "${proposingRequest.requester_name}"님에게 대여 제안이 전송되었습니다! 상대방이 선택하면 거래가 성사됩니다.`);
+    alert(`🚀 "${proposingRequest.requester_name}"님에게 대여 제안이 전송되었습니다!`);
     setProposingRequest(null);
     setOfferMessage('');
   };
 
   return (
     <div className="space-y-6">
-      {/* 상단 배너 및 글쓰기 토글 버튼 */}
+      {/* 상단 배너 */}
       <div className="bg-gradient-to-r from-slate-900 to-teal-950 text-white rounded-3xl p-6 md:p-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-xl">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-teal-400 bg-teal-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-              Wants Matching
+            <span className="text-[10px] font-bold text-amber-400 bg-amber-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+              Wants Demand
             </span>
-            <span className="text-xs text-slate-300">동네 역방향 자원 연대</span>
+            <span className="text-xs text-slate-300">필요한 물품 수요 요청 공간</span>
           </div>
           <h2 className="text-base md:text-lg font-black tracking-tight">
-            "필요한 물건을 먼저 요청하고, 이웃에게 빌려보세요!"
+            "급하게 필요한 물건이 있다면 여기에 요청을 올려보세요!"
           </h2>
           <p className="text-xs text-slate-400">
-            캠핑의자, 전동드릴 등 급하게 필요한 장비가 있다면 구인 요청을 올려보세요.
+            이웃들이 보유한 물건을 확인하고 맞춤 대여를 제안해 드립니다.
           </p>
         </div>
 
@@ -137,9 +140,9 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
               setIsWriting(!isWriting);
             }
           }}
-          className="px-5 py-3 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold rounded-2xl text-xs transition shadow-md cursor-pointer shrink-0"
+          className="px-5 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-2xl text-xs transition shadow-md cursor-pointer shrink-0"
         >
-          {isWriting ? '목록으로 돌아가기' : '➕ 필요한 물건 요청 올리기'}
+          {isWriting ? '목록으로 돌아가기' : '➕ 필요한 물건 신청하기'}
         </button>
       </div>
 
@@ -147,7 +150,7 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
       {isWriting && (
         <form onSubmit={handleCreateRequest} className="bg-white rounded-3xl border border-slate-200 p-6 space-y-4 shadow-xs">
           <h3 className="text-xs font-bold text-slate-900 border-b border-slate-100 pb-3">
-            📝 구해요 요청서 작성
+            📝 빌려주세요 요청서 작성
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
@@ -157,8 +160,8 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="예: 내일 쓸 캠핑의자 2개 급히 구해요"
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 font-medium"
+                placeholder="예: 캠핑용 타프 및 폴대 급히 구해요"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-amber-500 font-medium"
                 required
               />
             </div>
@@ -170,7 +173,7 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="예: 동탄이마트 인근"
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 font-medium"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-amber-500 font-medium"
                 required
               />
             </div>
@@ -182,8 +185,8 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              placeholder="필요한 이유나 사용 기간을 적어주세요."
-              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 leading-relaxed"
+              placeholder="어떤 용도로 필요한지 적어주세요."
+              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-amber-500 leading-relaxed"
             ></textarea>
           </div>
 
@@ -193,7 +196,7 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
               disabled={isSubmitting}
               className="px-6 py-3 bg-slate-900 text-white font-bold rounded-2xl text-xs transition cursor-pointer"
             >
-              {isSubmitting ? '등록 중...' : '동네 이웃들에게 요청 전송하기'}
+              {isSubmitting ? '등록 중...' : '빌려주세요 요청 올리기'}
             </button>
           </div>
         </form>
@@ -203,7 +206,7 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {requests.length === 0 ? (
           <div className="col-span-full py-12 text-center bg-white rounded-3xl border border-slate-200 text-slate-400 text-xs font-medium">
-            등록된 대여 요청이 없습니다. 첫 번째 요청을 올려보세요!
+            등록된 '빌려주세요' 요청이 없습니다. 첫 번째 요청을 올려보세요!
           </div>
         ) : (
           requests.map((req) => (
@@ -213,8 +216,8 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
             >
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="px-2.5 py-0.5 bg-teal-50 text-teal-700 rounded-md text-[10px] font-bold">
-                    🔍 구하는 중
+                  <span className="px-2.5 py-0.5 bg-amber-50 text-amber-700 rounded-md text-[10px] font-bold">
+                    🔍 구하는 중 (수요)
                   </span>
                   <span className="text-[10px] text-slate-400 flex items-center gap-1">
                     <Icons.MapPin size={11} /> {req.location}
@@ -240,7 +243,7 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
                       setProposingRequest(req);
                     }
                   }}
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-xs flex items-center gap-1.5"
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-xs flex items-center gap-1.5"
                 >
                   <span>🙋‍♂️ 내가 있어요!</span>
                 </button>
@@ -250,7 +253,7 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
         )}
       </div>
 
-      {/* "내가 있어요" 제안하기 모달 */}
+      {/* 제안 모달 */}
       {proposingRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
           <div className="bg-white rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl">
@@ -268,25 +271,24 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
 
             <form onSubmit={handleSendOffer} className="space-y-4 text-xs">
               <div className="space-y-1">
-                <label className="font-bold text-slate-700">제안 가격 (원 / 무료 가능)</label>
+                <label className="font-bold text-slate-700">제안 가격 (원)</label>
                 <input
                   type="number"
                   value={offerPrice}
                   onChange={(e) => setOfferPrice(e.target.value)}
-                  placeholder="0 (무료 나눔/대여 시 0원)"
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 font-bold"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold"
                   required
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-700">이웃에게 남길 메시지</label>
+                <label className="font-bold text-slate-700">전달할 메시지</label>
                 <textarea
                   value={offerMessage}
                   onChange={(e) => setOfferMessage(e.target.value)}
                   rows={3}
-                  placeholder="예: 집에 캠핑의자 2개 있어요! 언제든 가져가시거나 갖다드릴 수 있어요."
-                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-teal-500 leading-relaxed"
+                  placeholder="예: 집에 물건이 있어요. 언제든 빌려드릴게요!"
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl leading-relaxed"
                   required
                 ></textarea>
               </div>
@@ -301,7 +303,7 @@ export const ItemRequestsSection: React.FC<ItemRequestsSectionProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-md cursor-pointer"
+                  className="px-5 py-2.5 bg-slate-900 text-white font-bold rounded-xl shadow-md cursor-pointer"
                 >
                   제안 보내기
                 </button>
