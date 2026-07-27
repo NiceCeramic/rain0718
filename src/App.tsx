@@ -448,7 +448,6 @@ export default function App() {
           
           {activeTab === 'browse' && (
             <div className="space-y-6">
-              {/* 🔑 FIX 1: stations 및 items 전달 추가 */}
               <MapSection 
                 stations={stations}
                 items={items}
@@ -464,12 +463,12 @@ export default function App() {
                 onShowAuthModal={() => setIsAuthModalOpen(true)}
                 hubNamesMap={hubNamesMap}
                 rentalCounts={rentalCounts}
+                onRefresh={loadData}
               />
             </div>
           )}
 
           {activeTab === 'consignment' && (
-            /* 🔑 FIX 2: stations 전달 추가 */
             <ConsignmentForm 
               currentUser={currentUser} 
               stations={stations}
