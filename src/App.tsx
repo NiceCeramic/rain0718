@@ -207,7 +207,7 @@ export default function App() {
     showToast('안전하게 로그아웃되었습니다.');
   };
 
-  // 💬 사이드바 / 하단 바 1:1 대화 메뉴 클릭 핸들러 (당근마켓 스타일 전체 채팅 목록 열기)
+  // 💬 사이드바 / 하단 바 1:1 대화 메뉴 클릭 핸들러
   const handleOpenGeneralChat = () => {
     if (!currentUser || currentUser.role === 'guest') {
       setIsAuthModalOpen(true);
@@ -313,6 +313,7 @@ export default function App() {
               </span>
             </button>
 
+            {/* 🏷️ 명칭 변경: '빌려주세요' (내 물건 위탁) */}
             <button
               onClick={() => {
                 if (!currentUser || currentUser.role === 'guest') {
@@ -329,7 +330,7 @@ export default function App() {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
                 </svg>
-                내 물건 위탁
+                빌려주세요
               </span>
               <span className="text-[9px] font-mono text-teal-600 bg-teal-50 px-1 py-0.5 rounded">C2C</span>
             </button>
@@ -554,6 +555,7 @@ export default function App() {
           <span className="text-[10px]">둘러보기</span>
         </button>
 
+        {/* 🏷️ 모바일 하단바 명칭 변경: '빌려주세요' */}
         <button
           onClick={() => {
             if (!currentUser || currentUser.role === 'guest') {
@@ -567,9 +569,9 @@ export default function App() {
           }`}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2_2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
           </svg>
-          <span className="text-[10px]">내 물건 위탁</span>
+          <span className="text-[10px]">빌려주세요</span>
         </button>
 
         <button
