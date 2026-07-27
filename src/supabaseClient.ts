@@ -1,7 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Item, Rental, User } from './types';
 
-// Station 타입 정의
 export interface Station {
   id: string | number;
   name: string;
@@ -11,7 +10,6 @@ export interface Station {
   itemCount?: number;
 }
 
-// Local Storage Keys
 const SUPABASE_URL_KEY = 'ecolink_supabase_url';
 const SUPABASE_ANON_KEY_KEY = 'ecolink_supabase_anon_key';
 const KAKAO_KEY_KEY = 'ecolink_kakao_app_key';
@@ -29,11 +27,11 @@ export function getSupabaseConfig() {
 export function saveSupabaseConfig(url: string, anonKey: string) {
   localStorage.setItem(SUPABASE_URL_KEY, url.trim());
   localStorage.setItem(SUPABASE_ANON_KEY_KEY, anonKey.trim());
-  cachedClient = null; // Reset client instance
+  cachedClient = null;
 }
 
 export function getKakaoAppKey(): string {
-  return localStorage.getItem(KAKAO_KEY_KEY) || import.meta.env.VITE_KAKAO_APP_KEY || '';
+  return localStorage.getItem(KAKAOS_KEY_KEY || KAKAO_KEY_KEY) || import.meta.env.VITE_KAKAO_APP_KEY || '';
 }
 
 export function saveKakaoAppKey(key: string) {
@@ -97,7 +95,6 @@ export const api = {
   async getStations(): Promise<Station[]> {
     const client = getSupabaseClient();
     if (!client) {
-      // 기본 가상 거점 반환 (연결 안 되었을 때)
       return [
         { id: 1, name: '동탄이마트', lat: 37.201, lng: 127.075, address: '경기도 화성시 동탄중앙로 376' },
         { id: 2, name: '서울대 시흥캠퍼스 정문', lat: 37.342, lng: 126.733, address: '경기도 시흥시 서울대학로 173' },
@@ -200,7 +197,7 @@ export const api = {
     return counts;
   },
 
-  // 5. 🔍 '빌려주세요' (Item Requests) 수요 요청 API
+  // 5. 🔍 '빌려주세요' (Item Requests) 수요 요청 API (에러 해결 핵심)
   async createItemRequest(request: {
     title: string;
     category: string;
@@ -241,7 +238,6 @@ export const api = {
     const client = getSupabaseClient();
     if (!client) return null;
 
-    // 기존 방 조회
     const { data: existing } = await client
       .from('chat_rooms')
       .select('*')
@@ -251,7 +247,6 @@ export const api = {
 
     if (existing) return existing;
 
-    // 새 방 생성
     const { data: newRoom, error } = await client
       .from('chat_rooms')
       .insert([{ item_id: itemId, buyer_id: buyerId, seller_id: sellerId }])
