@@ -149,22 +149,61 @@ export const api = {
     return data;
   },
 
-  // 4. Rentals (대여 내역)
+  async updateItemStatus(itemId: string | number, status: string): Promise<void> {
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    const { error } = await client
+      .from('items')
+      .update({ status })
+      .eq('id', itemId);
+
+    if (error) {
+      console.warn('updateItemStatus error:', error.message);
+    }
+  },
+
+  // 4. Rentals (대여 및 위탁 거래 내역 양방향 조회)
   async getRentals(userId: string): Promise<Rental[]> {
     const client = getSupabaseClient();
     if (!client) return [];
 
-    const { data, error } = await client
+    // 1. 내가 대여 신청한 내역 조회
+    const { data: myRentals } = await client
       .from('rentals')
       .select('*')
-      .eq('user_id', userId)
-      .order('rented_at', { ascending: false });
+      .eq('user_id', userId);
 
-    if (error) {
-      console.warn('getRentals error:', error.message);
-      return [];
+    // 2. 내가 등록한 물건(item)의 ID 목록 조회
+    const { data: myItems } = await client
+      .from('items')
+      .select('id')
+      .eq('owner_id', userId);
+
+    let sharedRentals: any[] = [];
+    if (myItems && myItems.length > 0) {
+      const myItemIds = myItems.map(item => item.id);
+      // 3. 내 물건에 들어온 대여/나눔 내역 조회
+      const { data: itemRentals } = await client
+        .from('rentals')
+        .select('*')
+        .in('item_id', myItemIds);
+
+      if (itemRentals) {
+        sharedRentals = itemRentals;
+      }
     }
-    return data || [];
+
+    // 중복 제거 및 합치기
+    const allRentalsMap = new Map();
+    [...(myRentals || []), ...sharedRentals].forEach(r => {
+      allRentalsMap.set(r.id, r);
+    });
+
+    const combined = Array.from(allRentalsMap.values());
+    combined.sort((a, b) => new Date(b.rented_at).getTime() - new Date(a.rented_at).getTime());
+
+    return combined;
   },
 
   async insertRental(rental: Omit<Rental, 'id' | 'rented_at'>): Promise<void> {
@@ -174,6 +213,29 @@ export const api = {
     const { error } = await client.from('rentals').insert([rental]);
     if (error) {
       console.error('insertRental error:', error);
+      throw error;
+    }
+  },
+
+  async updateRentalStatus(rentalId: string | number, status: string, depositStatus?: string): Promise<void> {
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    const updateData: any = { status };
+    if (depositStatus) {
+      updateData.deposit_status = depositStatus;
+    }
+    if (status === 'returned') {
+      updateData.returned_at = new Date().toISOString();
+    }
+
+    const { error } = await client
+      .from('rentals')
+      .update(updateData)
+      .eq('id', rentalId);
+
+    if (error) {
+      console.error('updateRentalStatus error:', error);
       throw error;
     }
   },
