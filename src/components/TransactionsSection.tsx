@@ -19,6 +19,8 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
   onShowAuthModal
 }) => {
   const [loadingId, setLoadingId] = useState<string | number | null>(null);
+  const [returningRentalId, setReturningRentalId] = useState<string | number | null>(null);
+  const [returnPhotoFile, setReturnPhotoFile] = useState<File | null>(null);
 
   if (!currentUser || currentUser.role === 'guest') {
     return (
@@ -57,14 +59,27 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
     }
   };
 
-  // 📥 반납하기 버튼 처리
-  const handleReturnItem = async (rentalId: string | number, itemId: string | number) => {
+  // 📸 반납 인증 모달 열기
+  const handleOpenReturnModal = (rentalId: string | number) => {
+    setReturningRentalId(rentalId);
+    setReturnPhotoFile(null);
+  };
+
+  // 📥 사진 인증 후 최종 반납 처리
+  const handleConfirmReturn = async (rentalId: string | number, itemId: string | number) => {
+    if (!returnPhotoFile) {
+      alert('반납 완료 사진을 촬영 또는 업로드해 주세요!');
+      return;
+    }
+
     setLoadingId(rentalId);
     try {
       await api.updateRentalStatus(rentalId, 'returned', 'refunded');
       if (itemId) {
         await api.updateItemStatus(itemId, 'available');
       }
+      setReturningRentalId(null);
+      setReturnPhotoFile(null);
       await onRefresh();
     } catch (err) {
       console.error('Failed to return item:', err);
@@ -116,7 +131,6 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
             const item = getAssociatedItem(rental.item_id);
             const itemId = item?.id || rental.item_id;
 
-            // 현재 사용자가 물건의 소유주(위탁자)인지 판별
             const isOwner = item && item.owner_id && currentUser.id 
               ? String(item.owner_id) === String(currentUser.id) 
               : false;
@@ -125,13 +139,12 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
             const isActive = rental.status === 'active';
             const isReturned = rental.status === 'returned';
 
-            // 가격 정책: 총 금액은 보증금 기준, 대여료 및 수수료는 보증금에서 차감 후 반환
-            const depositPrice = rental.deposit || 10000; // 보증금 (총 입금액)
-            const itemPrice = item?.price || rental.price_paid || 2000; // 대여료
-            const platformFee = Math.round(itemPrice * 0.2); // 플랫폼 수수료 (20%)
-            const totalTransferAmount = depositPrice; // 총 결제금액은 보증금과 동일
+            const depositPrice = rental.deposit || 10000; 
+            const itemPrice = item?.price || rental.price_paid || 2000; 
+            const platformFee = Math.round(itemPrice * 0.2); 
+            const totalTransferAmount = depositPrice; 
 
-            const consignorAmount = itemPrice - platformFee; // 위탁자 정산금
+            const consignorAmount = itemPrice - platformFee; 
 
             return (
               <div 
@@ -274,11 +287,11 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
 
                     {!isOwner && (
                       <button
-                        onClick={() => handleReturnItem(rental.id, itemId)}
+                        onClick={() => handleOpenReturnModal(rental.id)}
                         disabled={loadingId === rental.id}
                         className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-[11px] transition shadow-xs cursor-pointer disabled:opacity-50"
                       >
-                        {loadingId === rental.id ? '반납 처리 중...' : '📸 사진 촬영 인증 및 반납 접수'}
+                        {loadingId === rental.id ? '반납 처리 중...' : '📸 거점 수거함 반납 및 사진 인증'}
                       </button>
                     )}
                   </div>
@@ -309,6 +322,68 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* 📸 반납 사진 인증 팝업 모달 */}
+      {returningRentalId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+          <div className="w-full max-w-sm bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 space-y-4">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <span>📸 거점 반납 인증 사진 업로드</span>
+            </h3>
+            <p className="text-xs text-slate-500">
+              거점 수거함에 물건이 잘 반납된 상태를 카메라로 촬영하거나 사진 파일로 첨부해 주세요.
+            </p>
+
+            {/* 파일 선택 / 카메라 촬영 input */}
+            <div className="border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center bg-slate-50 relative hover:border-teal-500 transition">
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setReturnPhotoFile(e.target.files[0]);
+                  }
+                }}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+              />
+              <div className="space-y-1">
+                <Icons.Camera size={28} className="mx-auto text-teal-600 mb-1" />
+                <p className="text-xs font-bold text-slate-700">
+                  {returnPhotoFile ? returnPhotoFile.name : '터치하여 사진 촬영 또는 파일 선택'}
+                </p>
+                <p className="text-[10px] text-slate-400">모바일 기기에서는 카메라가 바로 실행됩니다.</p>
+              </div>
+            </div>
+
+            {returnPhotoFile && (
+              <div className="text-xs text-teal-700 font-bold text-center bg-teal-50 py-2 rounded-xl">
+                ✔️ 인증 사진 첨부 완료!
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setReturningRentalId(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  const targetRental = rentals.find(r => r.id === returningRentalId);
+                  const targetItem = targetRental ? items.find(i => String(i.id) === String(targetRental.item_id)) : null;
+                  handleConfirmReturn(returningRentalId, targetItem?.id || targetRental?.item_id || 0);
+                }}
+                disabled={!returnPhotoFile || loadingId === returningRentalId}
+                className="flex-1 py-2.5 bg-[#0f766e] hover:bg-teal-700 disabled:opacity-40 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-xs"
+              >
+                {loadingId === returningRentalId ? '반납 처리 중...' : '반납 완료하기'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
