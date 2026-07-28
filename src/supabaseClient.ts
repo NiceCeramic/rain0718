@@ -244,7 +244,7 @@ export const api = {
     const { data, error } = await client
       .from('rentals')
       .select('item_id')
-      .in('status', ['pending_deposit', 'active']);
+      .in('status', ['pending_deposit', 'active', 'pending_return']);
 
     if (error || !data) return {};
 
