@@ -337,5 +337,20 @@ export const api = {
       return null;
     }
     return newRoom;
+  },
+
+  async markMessagesAsRead(roomId: string | number, userId: string) {
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    const { error } = await client
+      .from('messages')
+      .update({ is_read: true })
+      .eq('room_id', roomId)
+      .neq('sender_id', userId);
+
+    if (error) {
+      console.warn('markMessagesAsRead error:', error);
+    }
   }
 };
