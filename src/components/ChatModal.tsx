@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api, getSupabaseClient } from '../supabaseClient';
+import { getSupabaseClient } from '../supabaseClient';
 import { Icons } from './Icons';
 
 interface ChatMessage {
@@ -8,6 +8,7 @@ interface ChatMessage {
   sender_id: string;
   message: string;
   created_at: string;
+  is_read?: boolean;
 }
 
 interface ChatModalProps {
@@ -39,36 +40,54 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
     const fetchAndSubscribe = async () => {
       setIsLoading(true);
+      const client = getSupabaseClient();
+      if (!client) {
+        setIsLoading(false);
+        return;
+      }
+
       try {
-        // 0. 채팅방 정보(구매자, 판매자 ID)를 조회하여 상대방 이름 파악
-        const client = getSupabaseClient();
-        if (client) {
-          const { data: roomData } = await client
-            .from('chat_rooms')
-            .select('*')
-            .eq('id', roomId)
-            .maybeSingle();
+        // 0. 상대방 이름 파악
+        const { data: roomData } = await client
+          .from('chat_rooms')
+          .select('*')
+          .eq('id', roomId)
+          .maybeSingle();
 
-          if (roomData) {
-            const otherId = String(roomData.buyer_id) === String(currentUserId) 
-              ? roomData.seller_id 
-              : roomData.buyer_id;
+        if (roomData) {
+          const otherId = String(roomData.buyer_id) === String(currentUserId) 
+            ? roomData.seller_id 
+            : roomData.buyer_id;
 
-            if (otherId) {
-              const otherUser = await api.getUser(otherId);
-              if (otherUser && otherUser.name) {
-                setOtherUserName(otherUser.name);
-              }
+          if (otherId) {
+            const { data: userData } = await client
+              .from('users')
+              .select('name')
+              .eq('id', otherId)
+              .maybeSingle();
+            if (userData && userData.name) {
+              setOtherUserName(userData.name);
             }
           }
         }
 
-        // 1. 채팅방 입장 즉시 안읽은 메시지 읽음 처리 (is_read = true)
-        await api.markMessagesAsRead(roomId, currentUserId);
+        // 1. 읽음 처리
+        await client
+          .from('messages')
+          .update({ is_read: true })
+          .eq('room_id', roomId)
+          .neq('sender_id', currentUserId);
 
-        // 2. 대화 내역 불러오기
-        const initialMessages = await api.getMessages(roomId);
-        setMessages(initialMessages || []);
+        // 2. 메시지 내역 불러오기
+        const { data: msgData, error: msgError } = await client
+          .from('messages')
+          .select('*')
+          .eq('room_id', roomId)
+          .order('created_at', { ascending: true });
+
+        if (!msgError && msgData) {
+          setMessages(msgData);
+        }
       } catch (err) {
         console.error('Error loading chat messages:', err);
       } finally {
@@ -76,41 +95,42 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         setTimeout(scrollToBottom, 100);
       }
 
-      // 3. 실시간 메시지 구독
-      const supabase = getSupabaseClient();
-      if (supabase) {
-        channel = supabase
-          .channel(`room-${roomId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'messages',
-              filter: `room_id=eq.${roomId}`,
-            },
-            async (payload) => {
-              const newMsg = payload.new as ChatMessage;
-              
-              if (newMsg.sender_id !== currentUserId) {
-                await api.markMessagesAsRead(roomId, currentUserId);
-              }
-
-              setMessages((prev) => {
-                if (prev.some((m) => m.id === newMsg.id)) return prev;
-                return [...prev, newMsg];
-              });
-              setTimeout(scrollToBottom, 100);
+      // 3. 실시간 구독
+      channel = client
+        .channel(`room-${roomId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `room_id=eq.${roomId}`,
+          },
+          async (payload) => {
+            const newMsg = payload.new as ChatMessage;
+            
+            if (newMsg.sender_id !== currentUserId) {
+              await client
+                .from('messages')
+                .update({ is_read: true })
+                .eq('room_id', roomId)
+                .neq('sender_id', currentUserId);
             }
-          )
-          .subscribe();
-      }
+
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg];
+            });
+            setTimeout(scrollToBottom, 100);
+          }
+        )
+        .subscribe();
     };
 
     fetchAndSubscribe();
 
     return () => {
-      if (channel && getSupabaseClient()) {
+      if (channel) {
         getSupabaseClient()?.removeChannel(channel);
       }
     };
@@ -120,7 +140,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     scrollToBottom();
   }, [messages]);
 
-  // 💬 메시지 전송
+  // 💬 메시지 전송 (Supabase 직접 연동)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputMessage.trim() || isSending) return;
@@ -129,26 +149,26 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     setInputMessage('');
     setIsSending(true);
 
-    const tempId = `temp-${Date.now()}`;
-    const tempMsg: ChatMessage = {
-      id: tempId,
-      room_id: roomId,
-      sender_id: currentUserId,
-      message: text,
-      created_at: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, tempMsg]);
-    setTimeout(scrollToBottom, 50);
+    const client = getSupabaseClient();
+    if (!client) {
+      setIsSending(false);
+      return;
+    }
 
     try {
-      const sent = await api.sendMessage(roomId, currentUserId, text);
-      if (sent) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? sent : m))
-        );
-      } else {
-        alert('메시지 전송에 실패했습니다.');
+      const { data, error } = await client
+        .from('messages')
+        .insert([{ room_id: roomId, sender_id: currentUserId, message: text }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === data.id)) return prev;
+          return [...prev, data];
+        });
       }
     } catch (err: any) {
       console.error('Failed to send message:', err);
@@ -163,7 +183,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
       <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col h-[580px]">
         
-        {/* Header (상대방 이름 및 물품명 표시) */}
+        {/* Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-teal-500/20 text-teal-300">
