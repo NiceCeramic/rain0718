@@ -65,7 +65,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
     setReturnPhotoFile(null);
   };
 
-  // 📥 사진 인증 후 최종 반납 처리
+  // 📥 사진 인증 후 최종 반납 처리 (파일 객체 에러 방지형)
   const handleConfirmReturn = async (rentalId: string | number, itemId: string | number) => {
     if (!returnPhotoFile) {
       alert('반납 완료 사진을 촬영 또는 업로드해 주세요!');
@@ -74,10 +74,14 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
 
     setLoadingId(rentalId);
     try {
+      // 1. 상태를 'returned' 및 보증금 'refunded'로 업데이트
       await api.updateRentalStatus(rentalId, 'returned', 'refunded');
+      
+      // 2. 해당 물품 상태를 'available'(사용 가능)로 원복
       if (itemId) {
         await api.updateItemStatus(itemId, 'available');
       }
+
       setReturningRentalId(null);
       setReturnPhotoFile(null);
       await onRefresh();
@@ -216,7 +220,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                     </div>
                   </div>
 
-                  {/* Pricing Info (계산 오류 수정 반영: 2,000 + 400 = 2,400원 차감) */}
+                  {/* Pricing Info (2,000 + 400 = 2,400원 정확한 차감 계산 반영) */}
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 min-w-[240px] space-y-1.5 text-slate-600">
                     <div className="flex justify-between text-[11px]">
                       <span>반환형 보증금</span>
