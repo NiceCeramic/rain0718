@@ -168,13 +168,11 @@ export const api = {
     const client = getSupabaseClient();
     if (!client) return [];
 
-    // 1. 내가 대여 신청한 내역 조회
     const { data: myRentals } = await client
       .from('rentals')
       .select('*')
       .eq('user_id', userId);
 
-    // 2. 내가 등록한 물건(item)의 ID 목록 조회
     const { data: myItems } = await client
       .from('items')
       .select('id')
@@ -183,7 +181,6 @@ export const api = {
     let sharedRentals: any[] = [];
     if (myItems && myItems.length > 0) {
       const myItemIds = myItems.map(item => item.id);
-      // 3. 내 물건에 들어온 대여/나눔 내역 조회
       const { data: itemRentals } = await client
         .from('rentals')
         .select('*')
@@ -194,7 +191,6 @@ export const api = {
       }
     }
 
-    // 중복 제거 및 합치기
     const allRentalsMap = new Map();
     [...(myRentals || []), ...sharedRentals].forEach(r => {
       allRentalsMap.set(r.id, r);
@@ -295,22 +291,62 @@ export const api = {
     return data || [];
   },
 
-  // 6. Chat Rooms (1:1 채팅 관련)
+  // 6. Chat Rooms (1:1 채팅 목록 조회 및 상대방 이름/마지막 메시지 매핑)
   async getMyChatRooms(userId: string) {
     const client = getSupabaseClient();
     if (!client) return [];
 
-    const { data, error } = await client
+    const { data: rooms, error } = await client
       .from('chat_rooms')
       .select('*, items(*)')
       .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
       .order('created_at', { ascending: false });
 
-    if (error) {
+    if (error || !rooms) {
       console.warn('getMyChatRooms error:', error);
       return [];
     }
-    return data || [];
+
+    const enrichedRooms = await Promise.all(
+      rooms.map(async (room: any) => {
+        const otherUserId = String(room.buyer_id) === String(userId) ? room.seller_id : room.buyer_id;
+        
+        let otherUserName = '상대방';
+        if (otherUserId) {
+          const { data: userData } = await client
+            .from('users')
+            .select('name')
+            .eq('id', otherUserId)
+            .maybeSingle();
+          if (userData && userData.name) {
+            otherUserName = userData.name;
+          }
+        }
+
+        const { data: msgData } = await client
+          .from('messages')
+          .select('message, created_at')
+          .eq('room_id', room.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        return {
+          id: room.id,
+          item_id: room.item_id,
+          buyer_id: room.buyer_id,
+          seller_id: room.seller_id,
+          item_title: room.items?.title || '공유 자원',
+          item_category: room.items?.category || 'etc',
+          item_color: room.items?.color || '#0f766e',
+          other_user_name: otherUserName,
+          last_message: msgData?.message || '대화 내용이 없습니다.',
+          last_time: msgData?.created_at || room.created_at,
+        };
+      })
+    );
+
+    return enrichedRooms;
   },
 
   async getOrCreateChatRoom(itemId: string | number, buyerId: string, sellerId: string) {
