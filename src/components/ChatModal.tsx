@@ -27,6 +27,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [otherUserName, setOtherUserName] = useState<string>('대화 상대');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -39,7 +40,30 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     const fetchAndSubscribe = async () => {
       setIsLoading(true);
       try {
-        // 📖 1. 채팅방 입장 즉시 안읽은 메시지 읽음 처리 (is_read = true)
+        // 0. 채팅방 정보(구매자, 판매자 ID)를 조회하여 상대방 이름 파악
+        const client = getSupabaseClient();
+        if (client) {
+          const { data: roomData } = await client
+            .from('chat_rooms')
+            .select('*')
+            .eq('id', roomId)
+            .maybeSingle();
+
+          if (roomData) {
+            const otherId = String(roomData.buyer_id) === String(currentUserId) 
+              ? roomData.seller_id 
+              : roomData.buyer_id;
+
+            if (otherId) {
+              const otherUser = await api.getUser(otherId);
+              if (otherUser && otherUser.name) {
+                setOtherUserName(otherUser.name);
+              }
+            }
+          }
+        }
+
+        // 1. 채팅방 입장 즉시 안읽은 메시지 읽음 처리 (is_read = true)
         await api.markMessagesAsRead(roomId, currentUserId);
 
         // 2. 대화 내역 불러오기
@@ -52,7 +76,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         setTimeout(scrollToBottom, 100);
       }
 
-      // 🔔 3. 실시간 메시지 구독 (상대방 메시지 수신 시 자동 읽음 처리 및 화면 반영)
+      // 3. 실시간 메시지 구독
       const supabase = getSupabaseClient();
       if (supabase) {
         channel = supabase
@@ -68,7 +92,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             async (payload) => {
               const newMsg = payload.new as ChatMessage;
               
-              // 내가 연 방에서 상대방 메시지가 들어오면 즉시 읽음 처리
               if (newMsg.sender_id !== currentUserId) {
                 await api.markMessagesAsRead(roomId, currentUserId);
               }
@@ -97,7 +120,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     scrollToBottom();
   }, [messages]);
 
-  // 💬 메시지 전송 (즉시 화면 표시 + DB 보관)
+  // 💬 메시지 전송
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputMessage.trim() || isSending) return;
@@ -106,7 +129,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     setInputMessage('');
     setIsSending(true);
 
-    // 1. 임시 아이디로 즉시 화면에 노출 (속도감 향상)
     const tempId = `temp-${Date.now()}`;
     const tempMsg: ChatMessage = {
       id: tempId,
@@ -120,19 +142,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     setTimeout(scrollToBottom, 50);
 
     try {
-      // 2. Supabase DB 전송
       const sent = await api.sendMessage(roomId, currentUserId, text);
       if (sent) {
-        // 실제 DB 저장 완료 아이디로 대체
         setMessages((prev) =>
           prev.map((m) => (m.id === tempId ? sent : m))
         );
       } else {
-        alert('메시지 전송에 실패했습니다. (SQL Editor 권한 구문을 실행해 보세요.)');
+        alert('메시지 전송에 실패했습니다.');
       }
     } catch (err: any) {
       console.error('Failed to send message:', err);
-      alert(`메시지 전송 실패: ${err?.message || 'DB 수신 권한 또는 컬럼 문제입니다.'}`);
+      alert(`메시지 전송 실패: ${err?.message || '권한 오류'}`);
     } finally {
       setIsSending(false);
       setTimeout(scrollToBottom, 100);
@@ -143,15 +163,18 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
       <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col h-[580px]">
         
-        {/* Header */}
+        {/* Header (상대방 이름 및 물품명 표시) */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-teal-500/20 text-teal-300">
               <Icons.MessageSquare size={18} />
             </div>
             <div>
-              <h3 className="text-sm font-bold truncate max-w-[200px]">{itemTitle}</h3>
-              <p className="text-[10px] text-teal-400 font-medium">🥕 1:1 실시간 대여 문의</p>
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-bold truncate max-w-[160px]">{otherUserName}</h3>
+                <span className="text-[10px] text-slate-400 font-normal">님과 대화 중</span>
+              </div>
+              <p className="text-[10px] text-teal-400 font-medium truncate max-w-[200px]">📦 {itemTitle}</p>
             </div>
           </div>
           <button
@@ -176,7 +199,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               <div className="w-12 h-12 rounded-full bg-teal-50 flex items-center justify-center text-teal-600 mb-3">
                 <Icons.MessageSquare size={24} />
               </div>
-              <p className="text-xs font-bold text-slate-700">작성자와의 대화가 시작되었습니다!</p>
+              <p className="text-xs font-bold text-slate-700">{otherUserName}님과의 대화가 시작되었습니다!</p>
               <p className="text-[11px] mt-1 text-slate-400 max-w-[220px]">
                 대여 장소, 시간, 물품 상태에 대해 부담 없이 질문해 보세요.
               </p>
