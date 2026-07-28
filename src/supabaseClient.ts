@@ -217,22 +217,23 @@ export const api = {
     const client = getSupabaseClient();
     if (!client) return;
 
-    const updateData: any = { status };
-    if (depositStatus) {
-      updateData.deposit_status = depositStatus;
-    }
-    if (status === 'returned') {
-      updateData.returned_at = new Date().toISOString();
-    }
-
-    const { error } = await client
+    const { error: err1 } = await client
       .from('rentals')
-      .update(updateData)
+      .update({ status })
       .eq('id', rentalId);
 
-    if (error) {
-      console.error('updateRentalStatus error:', error);
-      throw error;
+    if (err1) throw err1;
+
+    try {
+      const extraData: any = {};
+      if (depositStatus) extraData.deposit_status = depositStatus;
+      if (status === 'returned') extraData.returned_at = new Date().toISOString();
+
+      if (Object.keys(extraData).length > 0) {
+        await client.from('rentals').update(extraData).eq('id', rentalId);
+      }
+    } catch (e) {
+      console.warn('Optional rental column update skipped:', e);
     }
   },
 
@@ -291,7 +292,7 @@ export const api = {
     return data || [];
   },
 
-  // 6. Chat Rooms (1:1 채팅 목록 조회 및 상대방 이름/마지막 메시지 매핑)
+  // 6. Chat Rooms & Messages (1:1 채팅 관련 API)
   async getMyChatRooms(userId: string) {
     const client = getSupabaseClient();
     if (!client) return [];
@@ -373,6 +374,40 @@ export const api = {
       return null;
     }
     return newRoom;
+  },
+
+  async getMessages(roomId: string | number) {
+    const client = getSupabaseClient();
+    if (!client) return [];
+
+    const { data, error } = await client
+      .from('messages')
+      .select('*')
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.warn('getMessages error:', error);
+      return [];
+    }
+    return data || [];
+  },
+
+  async sendMessage(roomId: string | number, senderId: string, message: string) {
+    const client = getSupabaseClient();
+    if (!client) return null;
+
+    const { data, error } = await client
+      .from('messages')
+      .insert([{ room_id: roomId, sender_id: senderId, message }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('sendMessage error:', error);
+      throw error;
+    }
+    return data;
   },
 
   async markMessagesAsRead(roomId: string | number, userId: string) {
