@@ -42,7 +42,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
     );
   }
 
-  // ⚡ 입금 확인 버튼 처리
+  // ⚡ 입금 확인 버튼 처리 (대여 시작)
   const handleApproveDeposit = async (rentalId: string | number, itemId: string | number) => {
     setLoadingId(rentalId);
     try {
@@ -65,8 +65,8 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
     setReturnPhotoFile(null);
   };
 
-  // 📥 사진 인증 후 최종 반납 처리 (파일 객체 에러 방지형)
-  const handleConfirmReturn = async (rentalId: string | number, itemId: string | number) => {
+  // 📥 대여자: 사진 인증 후 반납 신청 (상태를 pending_return으로 변경)
+  const handleRequestReturn = async (rentalId: string | number) => {
     if (!returnPhotoFile) {
       alert('반납 완료 사진을 촬영 또는 업로드해 주세요!');
       return;
@@ -74,20 +74,34 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
 
     setLoadingId(rentalId);
     try {
-      // 1. 상태를 'returned' 및 보증금 'refunded'로 업데이트
-      await api.updateRentalStatus(rentalId, 'returned', 'refunded');
-      
-      // 2. 해당 물품 상태를 'available'(사용 가능)로 원복
-      if (itemId) {
-        await api.updateItemStatus(itemId, 'available');
-      }
-
+      await api.updateRentalStatus(rentalId, 'pending_return', 'holding');
       setReturningRentalId(null);
       setReturnPhotoFile(null);
       await onRefresh();
     } catch (err) {
-      console.error('Failed to return item:', err);
-      alert('반납 처리 중 오류가 발생했습니다.');
+      console.error('Failed to request return:', err);
+      alert('반납 신청 중 오류가 발생했습니다.');
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  // ✅ 위탁자(나눔증): 반납 확인 완료 및 보증금 환급 승인 처리
+  const handleConfirmReturnByOwner = async (rentalId: string | number, itemId: string | number) => {
+    setLoadingId(rentalId);
+    try {
+      // 1. 거래 상태를 'returned', 보증금 상태를 'refunded'로 최종 완료 처리
+      await api.updateRentalStatus(rentalId, 'returned', 'refunded');
+      
+      // 2. 물품 상태를 다시 'available'(사용 가능)로 원복
+      if (itemId) {
+        await api.updateItemStatus(itemId, 'available');
+      }
+
+      await onRefresh();
+    } catch (err) {
+      console.error('Failed to confirm return:', err);
+      alert('반납 확인 처리 중 오류가 발생했습니다.');
     } finally {
       setLoadingId(null);
     }
@@ -139,23 +153,23 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
               ? String(item.owner_id) === String(currentUser.id) 
               : false;
 
-            const isPending = rental.status === 'pending_deposit';
+            const isPendingDeposit = rental.status === 'pending_deposit';
             const isActive = rental.status === 'active';
+            const isPendingReturn = rental.status === 'pending_return';
             const isReturned = rental.status === 'returned';
 
             const depositPrice = rental.deposit || 10000; 
             const itemPrice = item?.price || rental.price_paid || 2000; 
-            const platformFee = Math.round(itemPrice * 0.2); // 수수료 (예: 2,000원의 20% = 400원)
-            const totalDeduction = itemPrice + platformFee; // 총 차감액 (2,000 + 400 = 2,400원)
+            const platformFee = Math.round(itemPrice * 0.2); 
+            const totalDeduction = itemPrice + platformFee; 
             const totalTransferAmount = depositPrice; 
-
             const consignorAmount = itemPrice - platformFee; 
 
             return (
               <div 
                 key={rental.id} 
                 className={`bg-white rounded-3xl border shadow-sm overflow-hidden transition duration-200 ${
-                  isPending ? 'border-amber-200 ring-4 ring-amber-500/5' : 'border-slate-200'
+                  isPendingDeposit ? 'border-amber-200 ring-4 ring-amber-500/5' : 'border-slate-200'
                 }`}
               >
                 {/* Header Badge Row */}
@@ -173,7 +187,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {isPending && (
+                    {isPendingDeposit && (
                       <span className="px-2.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-100 text-[10px] font-bold rounded-md flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                         {isOwner ? '상대방 입금 대기 중' : '입금 확인 대기'}
@@ -185,20 +199,26 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                         {isOwner ? '공유/이용 중' : '대여 이용 중'}
                       </span>
                     )}
+                    {isPendingReturn && (
+                      <span className="px-2.5 py-0.5 bg-sky-50 text-sky-800 border border-sky-100 text-[10px] font-bold rounded-md flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
+                        {isOwner ? '반납 확인 대기 중' : '반납 심사 대기'}
+                      </span>
+                    )}
                     {isReturned && (
                       <span className="px-2.5 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded-md">
                         {isOwner ? '나눔 및 정산 완료' : '반납 및 정산 완료'}
                       </span>
                     )}
 
-                    {rental.deposit_status === 'holding' && (
+                    {rental.deposit_status === 'holding' && !isReturned && (
                       <span className="px-2 py-0.5 bg-sky-50 text-sky-800 text-[9px] font-bold rounded-sm border border-sky-100">
                         보증금 보관 중
                       </span>
                     )}
                     {rental.deposit_status === 'refunded' && (
                       <span className="px-2 py-0.5 bg-teal-50 text-teal-800 text-[9px] font-bold rounded-sm border border-teal-100">
-                        정산 완료
+                        보증금 반납 완료
                       </span>
                     )}
                   </div>
@@ -220,7 +240,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                     </div>
                   </div>
 
-                  {/* Pricing Info (2,000 + 400 = 2,400원 정확한 차감 계산 반영) */}
+                  {/* Pricing Info */}
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 min-w-[240px] space-y-1.5 text-slate-600">
                     <div className="flex justify-between text-[11px]">
                       <span>반환형 보증금</span>
@@ -231,7 +251,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                       <span className="text-amber-700">-₩{totalDeduction.toLocaleString()}</span>
                     </div>
                     <div className="text-[10px] text-slate-400 pl-2 pb-1">
-                      (추후 대여료 및 수수료 차감 후 반환 예정)
+                      {isReturned ? '보증금 반납이 완료되었습니다.' : '(추후 대여료 및 수수료 차감 후 반환 예정)'}
                     </div>
                     <div className="border-t border-slate-200/80 my-1 pt-1.5 flex justify-between font-bold text-teal-900 text-xs">
                       <span>{isOwner ? '예상 정산/보증금 합계' : '총 결제(입금) 금액'}</span>
@@ -241,7 +261,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                 </div>
 
                 {/* Status-specific Action Cards */}
-                {isPending && !isOwner && (
+                {isPendingDeposit && !isOwner && (
                   <div className="px-5 py-4 bg-amber-50/30 border-t border-amber-200 text-xs">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-amber-200">
                       <div className="space-y-1">
@@ -266,7 +286,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                   </div>
                 )}
 
-                {isPending && isOwner && (
+                {isPendingDeposit && isOwner && (
                   <div className="px-5 py-3.5 bg-amber-50/20 border-t border-amber-200 text-xs text-amber-900 flex items-center justify-between">
                     <span>⏳ 대여자가 계좌 송금 및 입금을 진행 중입니다. 입금이 확인되면 대여가 시작됩니다.</span>
                     <button
@@ -296,9 +316,35 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                         disabled={loadingId === rental.id}
                         className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-[11px] transition shadow-xs cursor-pointer disabled:opacity-50"
                       >
-                        {loadingId === rental.id ? '반납 처리 중...' : '📸 거점 수거함 반납 및 사진 인증'}
+                        {loadingId === rental.id ? '반납 신청 중...' : '📸 거점 수거함 반납 및 사진 인증'}
                       </button>
                     )}
+                  </div>
+                )}
+
+                {/* 대여자가 반납 신청을 한 경우 (위탁자 나눔증 화면에서 처리) */}
+                {isPendingReturn && isOwner && (
+                  <div className="px-5 py-4 bg-sky-50/40 border-t border-sky-200 text-xs flex justify-between items-center flex-wrap gap-2">
+                    <div className="flex items-center gap-2 text-sky-900">
+                      <span className="w-2 h-2 rounded-full bg-sky-500 animate-ping"></span>
+                      <p className="text-[11px] font-semibold">
+                        📦 대여자가 반납 인증을 완료했습니다. 거점에서 물품을 확인 후 반납 확인을 진행해 주세요.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => handleConfirmReturnByOwner(rental.id, itemId)}
+                      disabled={loadingId === rental.id}
+                      className="px-5 py-2.5 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-xl text-[11px] transition shadow-xs cursor-pointer disabled:opacity-50"
+                    >
+                      {loadingId === rental.id ? '처리 중...' : '✅ 반납 확인 완료 (보증금 반환 승인)'}
+                    </button>
+                  </div>
+                )}
+
+                {isPendingReturn && !isOwner && (
+                  <div className="px-5 py-3.5 bg-sky-50/30 border-t border-sky-200 text-xs text-sky-900">
+                    ⏳ 반납 인증이 완료되었습니다. 물건 소유주(위탁자)가 반납을 확인하고 보증금을 반환할 예정입니다.
                   </div>
                 )}
 
@@ -306,7 +352,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                   <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-600 space-y-1">
                     <div className="flex items-center gap-1.5 font-bold text-[#0f766e]">
                       <Icons.Check size={14} />
-                      <span>{isOwner ? '나눔(위탁) 정산 완료 내역' : '반납 및 보증금 환급 완료 내역'}</span>
+                      <span>{isOwner ? '나눔(위탁) 정산 완료 내역' : '반납 및 보증금 반납 완료 내역'}</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
                       <div className="bg-white p-2 rounded-xl border border-slate-200">
@@ -314,7 +360,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                         <strong className="text-slate-800">₩{consignorAmount.toLocaleString()}</strong>
                       </div>
                       <div className="bg-white p-2 rounded-xl border border-slate-200">
-                        <span className="text-slate-400 block">대여자 (보증금 환급)</span>
+                        <span className="text-slate-400 block">대여자 (보증금 반납 완료)</span>
                         <strong className="text-teal-700">₩{(depositPrice - totalDeduction).toLocaleString()}</strong>
                       </div>
                       <div className="bg-white p-2 rounded-xl border border-slate-200">
@@ -376,15 +422,11 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                 취소
               </button>
               <button
-                onClick={() => {
-                  const targetRental = rentals.find(r => r.id === returningRentalId);
-                  const targetItem = targetRental ? items.find(i => String(i.id) === String(targetRental.item_id)) : null;
-                  handleConfirmReturn(returningRentalId, targetItem?.id || targetRental?.item_id || 0);
-                }}
+                onClick={() => handleRequestReturn(returningRentalId)}
                 disabled={!returnPhotoFile || loadingId === returningRentalId}
                 className="flex-1 py-2.5 bg-[#0f766e] hover:bg-teal-700 disabled:opacity-40 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-xs"
               >
-                {loadingId === returningRentalId ? '반납 처리 중...' : '반납 완료하기'}
+                {loadingId === returningRentalId ? '신청 중...' : '반납 신청하기'}
               </button>
             </div>
           </div>
