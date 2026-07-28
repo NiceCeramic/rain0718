@@ -22,7 +22,16 @@ export default function App() {
   const [stations, setStations] = useState<Station[]>([]);
   const [rentalCounts, setRentalCounts] = useState<Record<string, number>>({});
   const [selectedHubId, setSelectedHubId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('browse');
+  
+  // 💡 새로고침 시에도 직전 탭을 기억하도록 sessionStorage 연동
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    const savedTab = sessionStorage.getItem('ecolink_active_tab');
+    if (savedTab && ['browse', 'consignment', 'requests', 'attendance', 'transactions'].includes(savedTab)) {
+      return savedTab as ActiveTab;
+    }
+    return 'browse';
+  });
+
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isConfiguredSupabase, setIsConfiguredSupabase] = useState(false);
@@ -34,6 +43,11 @@ export default function App() {
     roomId: string;
     itemTitle: string;
   } | null>(null);
+
+  // 💡 탭이 변경될 때마다 sessionStorage에 저장
+  useEffect(() => {
+    sessionStorage.setItem('ecolink_active_tab', activeTab);
+  }, [activeTab]);
 
   useEffect(() => {
     const cachedUser = localStorage.getItem('ecolink_cached_user');
@@ -124,6 +138,8 @@ export default function App() {
       } else if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
         localStorage.removeItem('ecolink_cached_user');
+        sessionStorage.removeItem('ecolink_active_tab');
+        setActiveTab('browse');
         setIsAuthModalOpen(true);
       }
     });
@@ -199,6 +215,7 @@ export default function App() {
     }
     setCurrentUser(null);
     localStorage.removeItem('ecolink_cached_user');
+    sessionStorage.removeItem('ecolink_active_tab');
     setActiveTab('browse');
     setIsAuthModalOpen(true);
     showToast('안전하게 로그아웃되었습니다.');
@@ -341,7 +358,7 @@ export default function App() {
               <span className="text-[9px] font-mono text-amber-600 bg-amber-50 px-1 py-0.5 rounded">수요</span>
             </button>
 
-            {/* 🎁 출석체크 탭 추가됨 */}
+            {/* 출석체크 탭 */}
             <button
               onClick={() => {
                 if (!currentUser || currentUser.role === 'guest') {
@@ -381,7 +398,7 @@ export default function App() {
               </span>
               {rentals.length > 0 && (
                 <span className="px-1.5 py-0.5 bg-rose-500 text-white text-[9px] rounded-full font-bold">
-                  {rentals.filter(r => r.status === 'pending_deposit' || r.status === 'active').length}
+                  {rentals.filter(r => r.status === 'pending_deposit' || r.status === 'active' || r.status === 'pending_return').length}
                 </span>
               )}
             </button>
