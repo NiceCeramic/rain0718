@@ -141,7 +141,8 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
 
             const depositPrice = rental.deposit || 10000; 
             const itemPrice = item?.price || rental.price_paid || 2000; 
-            const platformFee = Math.round(itemPrice * 0.2); 
+            const platformFee = Math.round(itemPrice * 0.2); // 수수료 (예: 2,000원의 20% = 400원)
+            const totalDeduction = itemPrice + platformFee; // 총 차감액 (2,000 + 400 = 2,400원)
             const totalTransferAmount = depositPrice; 
 
             const consignorAmount = itemPrice - platformFee; 
@@ -215,18 +216,18 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                     </div>
                   </div>
 
-                  {/* Pricing Info */}
-                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 min-w-[230px] space-y-1.5 text-slate-600">
+                  {/* Pricing Info (계산 오류 수정 반영: 2,000 + 400 = 2,400원 차감) */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 min-w-[240px] space-y-1.5 text-slate-600">
                     <div className="flex justify-between text-[11px]">
                       <span>반환형 보증금</span>
                       <span className="font-bold text-slate-800">₩{depositPrice.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-[11px] text-slate-500 pl-2">
                       <span>└ 대여료 (₩{itemPrice.toLocaleString()} + 수수료 ₩{platformFee.toLocaleString()})</span>
-                      <span className="text-amber-700">-₩{itemPrice.toLocaleString()}</span>
+                      <span className="text-amber-700">-₩{totalDeduction.toLocaleString()}</span>
                     </div>
                     <div className="text-[10px] text-slate-400 pl-2 pb-1">
-                      (추후 대여료 차감 후 반환 예정)
+                      (추후 대여료 및 수수료 차감 후 반환 예정)
                     </div>
                     <div className="border-t border-slate-200/80 my-1 pt-1.5 flex justify-between font-bold text-teal-900 text-xs">
                       <span>{isOwner ? '예상 정산/보증금 합계' : '총 결제(입금) 금액'}</span>
@@ -310,7 +311,7 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
                       </div>
                       <div className="bg-white p-2 rounded-xl border border-slate-200">
                         <span className="text-slate-400 block">대여자 (보증금 환급)</span>
-                        <strong className="text-teal-700">₩{(depositPrice - itemPrice).toLocaleString()}</strong>
+                        <strong className="text-teal-700">₩{(depositPrice - totalDeduction).toLocaleString()}</strong>
                       </div>
                       <div className="bg-white p-2 rounded-xl border border-slate-200">
                         <span className="text-slate-400 block">에코링크 수수료</span>
@@ -336,7 +337,6 @@ export const TransactionsSection: React.FC<TransactionsSectionProps> = ({
               거점 수거함에 물건이 잘 반납된 상태를 카메라로 촬영하거나 사진 파일로 첨부해 주세요.
             </p>
 
-            {/* 파일 선택 / 카메라 촬영 input */}
             <div className="border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center bg-slate-50 relative hover:border-teal-500 transition">
               <input
                 type="file"
